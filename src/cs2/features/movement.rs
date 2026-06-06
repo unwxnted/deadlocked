@@ -60,8 +60,8 @@ struct BunnyhopState {
 }
 
 impl BunnyhopState {
-    const JUMP_PULSE: Duration = Duration::from_millis(18);
-    const GROUND_RETRY_COOLDOWN: Duration = Duration::from_millis(32);
+    const JUMP_PULSE: Duration = Duration::from_millis(20);
+    const GROUND_RETRY_COOLDOWN: Duration = Duration::from_millis(50);
 
     fn release_if_needed(&mut self, input_device: &mut InputDevice, now: Instant) {
         if self.jump_pressed
@@ -109,7 +109,7 @@ struct AutostrafeState {
 }
 
 impl AutostrafeState {
-    const MIN_SPEED: f32 = 5.0;
+    const MIN_SPEED: f32 = 1.0;
     const MOUSE_DEADZONE: f32 = 0.15;
     const VELOCITY_DEADZONE: f32 = 0.75;
 
@@ -163,7 +163,7 @@ impl AutostrafeState {
         let response = (1.0 - smooth).clamp(0.08, 1.0);
         self.filtered_intent += (desired_intent - self.filtered_intent) * response;
 
-        let switch_threshold = 0.10 + smooth * 0.25;
+        let switch_threshold = 0.0001 + smooth * 0.25;
         let target_side = if self.filtered_intent > switch_threshold {
             Some(StrafeSide::Left)
         } else if self.filtered_intent < -switch_threshold {
