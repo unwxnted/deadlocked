@@ -42,6 +42,7 @@ pub struct AimbotConfig {
     pub fov: f32,
     pub smooth: f32,
     pub inertia: f32,
+    pub jitter: JitterConfig,
     pub bones: Vec<Bones>,
     pub targeting_mode: TargetingMode,
 }
@@ -60,6 +61,7 @@ impl Default for AimbotConfig {
             fov: 2.5,
             smooth: 5.0,
             inertia: 1.0,
+            jitter: JitterConfig::default(),
             bones: vec![
                 Bones::Head,
                 Bones::Neck,
@@ -70,6 +72,22 @@ impl Default for AimbotConfig {
                 Bones::Hip,
             ],
             targeting_mode: TargetingMode::Fov,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct JitterConfig {
+    pub enabled: bool,
+    pub amount: f32,
+}
+
+impl Default for JitterConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            amount: 0.03,
         }
     }
 }

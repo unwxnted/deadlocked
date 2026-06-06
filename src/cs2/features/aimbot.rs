@@ -1,7 +1,10 @@
+use std::time::{Duration, Instant};
+
 use glam::{Vec2, vec2};
+use rand::{RngExt, rng};
 
 use crate::{
-    config::Config,
+    config::{Config, aim::AimbotConfig},
     cs2::{
         CS2,
         entity::{player::Player, weapon_class::WeaponClass},
@@ -14,6 +17,9 @@ use crate::{
 pub struct Aimbot {
     pub active: bool,
     inertia: Vec2,
+    jitter_offset: Vec2,
+    jitter_target: Vec2,
+    last_jitter_update: Option<Instant>,
 }
 
 impl CS2 {
@@ -22,18 +28,22 @@ impl CS2 {
         let config = self.aimbot_config(config);
 
         if !config.enabled {
+            self.aim.reset_jitter();
             return false;
         }
 
         if !Self::check_hotkey(&self.input, config.mode, hotkey, &mut self.aim.active) {
+            self.aim.reset_jitter();
             return false;
         }
 
         let Some(target) = &self.target.player else {
+            self.aim.reset_jitter();
             return false;
         };
 
         if !target.is_valid(self) {
+            self.aim.reset_jitter();
             return false;
         }
 
@@ -48,18 +58,22 @@ impl CS2 {
             WeaponClass::Grenade,
         ];
         if disallowed_weapons.contains(&weapon_class) {
+            self.aim.reset_jitter();
             return false;
         }
 
         if config.flash_check && local_player.is_flashed(self) {
+            self.aim.reset_jitter();
             return false;
         }
 
         if config.visibility_check && !target.visible(self, &local_player) {
+            self.aim.reset_jitter();
             return false;
         }
 
         if local_player.shots_fired(self) < config.start_bullet {
+            self.aim.reset_jitter();
             return false;
         }
 
@@ -89,10 +103,14 @@ impl CS2 {
                     1.0
                 })
         {
+            self.aim.reset_jitter();
             return false;
         }
 
-        let mut aim_angles = view_angles - target_angle;
+        let mut jittered_target_angle = target_angle + self.aim.jitter(config);
+        vec2_clamp(&mut jittered_target_angle);
+
+        let mut aim_angles = view_angles - jittered_target_angle;
         if aim_angles.y < -180.0 {
             aim_angles.y += 360.0
         }
@@ -112,5 +130,44 @@ impl CS2 {
         self.recoil.previous = local_player.aim_punch(self);
 
         true
+    }
+}
+
+impl Aimbot {
+    const JITTER_UPDATE_INTERVAL: Duration = Duration::from_millis(40);
+    const JITTER_RESPONSE: f32 = 0.28;
+
+    fn reset_jitter(&mut self) {
+        self.jitter_offset = Vec2::ZERO;
+        self.jitter_target = Vec2::ZERO;
+        self.last_jitter_update = None;
+    }
+
+    fn jitter(&mut self, config: &AimbotConfig) -> Vec2 {
+        if !config.jitter.enabled {
+            self.reset_jitter();
+            return Vec2::ZERO;
+        }
+
+        let amount = config.jitter.amount.max(0.0);
+        if amount <= f32::EPSILON {
+            self.reset_jitter();
+            return Vec2::ZERO;
+        }
+
+        let now = Instant::now();
+        if self
+            .last_jitter_update
+            .is_none_or(|last| now.duration_since(last) >= Self::JITTER_UPDATE_INTERVAL)
+        {
+            self.jitter_target = vec2(
+                rng().random_range(-amount..=amount),
+                rng().random_range(-amount..=amount),
+            );
+            self.last_jitter_update = Some(now);
+        }
+
+        self.jitter_offset += (self.jitter_target - self.jitter_offset) * Self::JITTER_RESPONSE;
+        self.jitter_offset
     }
 }

@@ -129,6 +129,26 @@ impl App {
                 self.send_config();
             }
 
+            if checkbox(
+                ui,
+                "Enable Jitter",
+                &mut self.weapon_config().aimbot.jitter.enabled,
+            ) {
+                self.send_config();
+            }
+
+            if drag(
+                ui,
+                "Jitter Amount",
+                DragValue::new(&mut self.weapon_config().aimbot.jitter.amount)
+                    .range(0.0..=1.0)
+                    .speed(0.001)
+                    .suffix("°")
+                    .max_decimals(3),
+            ) {
+                self.send_config();
+            }
+
             if drag(
                 ui,
                 "Start Bullet",
