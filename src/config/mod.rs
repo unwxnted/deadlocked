@@ -7,13 +7,17 @@ use egui::Color32;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    config::{aim::AimConfig, hud::HudConfig, player::PlayerConfig, r#unsafe::UnsafeConfig},
+    config::{
+        aim::AimConfig, hud::HudConfig, movement::MovementConfig, player::PlayerConfig,
+        r#unsafe::UnsafeConfig,
+    },
     ui::color::Colors,
 };
 
 pub mod aim;
 pub mod application;
 pub mod hud;
+pub mod movement;
 pub mod player;
 pub mod r#unsafe;
 
@@ -21,6 +25,7 @@ pub mod r#unsafe;
 #[serde(default)]
 pub struct Config {
     pub aim: AimConfig,
+    pub movement: MovementConfig,
     pub player: PlayerConfig,
     pub hud: HudConfig,
     pub misc: UnsafeConfig,
@@ -32,6 +37,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             aim: AimConfig::default(),
+            movement: MovementConfig::default(),
             player: PlayerConfig::default(),
             hud: HudConfig::default(),
             misc: UnsafeConfig::default(),

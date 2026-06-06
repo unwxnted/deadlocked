@@ -83,6 +83,7 @@ const KEY_SPACE: u16 = 57;
 const KEY_ESC: u16 = 1;
 const KEY_ENTER: u16 = 28;
 const KEY_A: u16 = 30;
+const KEY_D: u16 = 32;
 const KEY_Z: u16 = 44;
 
 struct VirtualDevice {
@@ -154,6 +155,22 @@ impl InputDevice {
         self.keyboard.key(KEY_SPACE, 0);
     }
 
+    pub fn a_press(&mut self) {
+        self.keyboard.key(KEY_A, 1);
+    }
+
+    pub fn a_release(&mut self) {
+        self.keyboard.key(KEY_A, 0);
+    }
+
+    pub fn d_press(&mut self) {
+        self.keyboard.key(KEY_D, 1);
+    }
+
+    pub fn d_release(&mut self) {
+        self.keyboard.key(KEY_D, 0);
+    }
+
     fn syn(time: Timeval) -> InputEvent {
         InputEvent {
             time,
@@ -207,7 +224,7 @@ impl VirtualDevice {
             ui_set_evbit(fd, EV_SYN as u64).map_err(|e| e.to_string())?;
             ui_set_evbit(fd, EV_KEY as u64).map_err(|e| e.to_string())?;
 
-            for code in [KEY_ESC, KEY_ENTER, KEY_SPACE, KEY_A, KEY_Z] {
+            for code in [KEY_ESC, KEY_ENTER, KEY_SPACE, KEY_A, KEY_D, KEY_Z] {
                 ui_set_keybit(fd, code as u64).map_err(|e| e.to_string())?;
             }
 

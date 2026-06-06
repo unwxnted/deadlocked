@@ -31,9 +31,11 @@ pub struct Data {
     pub view_angles: Vec2,
     pub window_position: Vec2,
     pub window_size: Vec2,
+    pub movement_master_active: bool,
     pub aimbot_active: bool,
     pub triggerbot_active: bool,
     pub bhop_active: bool,
+    pub autostrafe_active: bool,
     pub esp_active: bool,
 }
 

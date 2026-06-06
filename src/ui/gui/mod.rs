@@ -15,12 +15,14 @@ mod config;
 mod grenade;
 mod helpers;
 mod hud;
+mod movement;
 mod player;
 mod r#unsafe;
 
 #[derive(PartialEq)]
 pub enum Tab {
     Aimbot,
+    Movement,
     Player,
     Hud,
     Grenades,
@@ -51,6 +53,7 @@ impl App {
             .resizable(false)
             .show_inside(ui, |ui| {
                 ui.selectable_value(&mut self.current_tab, Tab::Aimbot, "\u{f04fe} Aimbot");
+                ui.selectable_value(&mut self.current_tab, Tab::Movement, "\u{f070e} Movement");
                 ui.selectable_value(&mut self.current_tab, Tab::Player, "\u{f0013} Player");
                 ui.selectable_value(&mut self.current_tab, Tab::Hud, "\u{f0379} Hud");
                 ui.selectable_value(&mut self.current_tab, Tab::Grenades, "\u{f0691} Grenades");
@@ -93,6 +96,7 @@ impl App {
 
         egui::CentralPanel::default().show_inside(ui, |ui| match self.current_tab {
             Tab::Aimbot => self.aimbot_settings(ui),
+            Tab::Movement => self.movement_settings(ui),
             Tab::Player => self.player_settings(ui),
             Tab::Hud => self.hud_settings(ui),
             Tab::Grenades => self.grenade_settings(ui),

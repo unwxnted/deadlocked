@@ -14,7 +14,7 @@ use crate::{
             Entity, EntityInfo, GrenadeInfo, planted_c4::PlantedC4, player::Player, weapon::Weapon,
         },
         features::{
-            aimbot::Aimbot, bhop::Bunnyhop, esp_toggle::EspToggle, rcs::Recoil,
+            aimbot::Aimbot, esp_toggle::EspToggle, movement::MovementState, rcs::Recoil,
             triggerbot::Triggerbot,
         },
         input::Input,
@@ -55,7 +55,7 @@ pub struct CS2 {
     aim: Aimbot,
     trigger: Triggerbot,
     esp: EspToggle,
-    bhop: Bunnyhop,
+    movement_state: MovementState,
     weapon: Weapon,
     planted_c4: Option<PlantedC4>,
     last_cache: Instant,
@@ -90,6 +90,7 @@ impl CS2 {
     pub fn run(&mut self, config: &Config, input_device: &mut InputDevice) {
         if !self.process.is_valid() {
             self.is_valid = false;
+            self.reset_movement(input_device);
             utils::debug!("process is no longer valid");
             return;
         }
@@ -121,7 +122,7 @@ impl CS2 {
 
         self.triggerbot(config);
 
-        self.bhop(config, input_device);
+        self.movement(config, input_device);
 
         self.triggerbot_shoot(input_device);
 
@@ -137,6 +138,19 @@ impl CS2 {
         data.friendlies.clear();
         data.spectators.clear();
         data.entities.clear();
+        data.in_game = false;
+        data.is_ffa = false;
+        data.weapon = Weapon::default();
+        data.bomb.planted = false;
+        data.bomb.timer = 0.0;
+        data.bomb.being_defused = false;
+        data.bomb.defuse_remain_time = 0.0;
+        data.movement_master_active = false;
+        data.aimbot_active = false;
+        data.triggerbot_active = false;
+        data.bhop_active = false;
+        data.autostrafe_active = false;
+        data.esp_active = false;
 
         let sdl_window = self.process.read::<u64>(self.offsets.direct.sdl_window);
         if sdl_window == 0 {
@@ -151,14 +165,10 @@ impl CS2 {
         }
 
         let Some(local_player) = Player::local_player(self) else {
-            data.weapon = Weapon::default();
-            data.in_game = false;
             return;
         };
         let local_team = local_player.team(self);
         if local_team != TEAM_T && local_team != TEAM_CT {
-            data.weapon = Weapon::default();
-            data.in_game = false;
             return;
         }
         let is_ffa = self.is_ffa();
@@ -250,6 +260,7 @@ impl CS2 {
         data.in_game = true;
         data.is_ffa = is_ffa;
         data.map_name = self.current_map();
+        data.movement_master_active = self.movement_master_active(config);
         data.aimbot_active = if self.aimbot_config(config).mode == KeyMode::Toggle {
             self.aim.active
         } else {
@@ -261,6 +272,7 @@ impl CS2 {
             false
         };
         data.bhop_active = self.bhop_enabled(config);
+        data.autostrafe_active = self.autostrafe_enabled(config);
         data.esp_active = self.esp_enabled(config);
 
         data.view_matrix = self.process.read::<Mat4>(self.offsets.direct.view_matrix);
@@ -293,7 +305,7 @@ impl CS2 {
             aim: Aimbot::default(),
             trigger: Triggerbot::default(),
             esp: EspToggle::default(),
-            bhop: Bunnyhop::default(),
+            movement_state: MovementState::default(),
             weapon: Weapon::default(),
             planted_c4: None,
             last_cache: Instant::now(),

@@ -2,7 +2,7 @@ use egui::{DragValue, Ui};
 
 use crate::ui::{
     app::App,
-    gui::helpers::{collapsing_open, color_picker, combo_box, keybind},
+    gui::helpers::{collapsing_open, color_picker},
 };
 
 impl App {
@@ -50,30 +50,6 @@ impl App {
     }
 
     fn unsafe_left(&mut self, ui: &mut Ui) {
-        collapsing_open(ui, "Movement", |ui| {
-            if ui
-                .checkbox(&mut self.config.misc.bhop, "Bunnyhop")
-                .changed()
-            {
-                self.send_config();
-            }
-
-            if keybind(
-                ui,
-                "bhop_hotkey",
-                "Hotkey",
-                &mut self.config.misc.bhop_hotkey,
-            ) {
-                self.send_config();
-            }
-
-            if combo_box(ui, "bhop_mode", "Mode", &mut self.config.misc.bhop_mode) {
-                self.send_config();
-            }
-
-            ui.label("If you bind Space, Toggle is the reliable mode.");
-        });
-
         collapsing_open(ui, "No Flash", |ui| {
             if ui
                 .checkbox(&mut self.config.misc.no_flash, "No Flash")

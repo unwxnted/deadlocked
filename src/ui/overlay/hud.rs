@@ -83,6 +83,7 @@ impl App {
         }
 
         let position = pos2(10.0, data.window_size.y / 2.0);
+        let mut line = 0.0;
         let aimbot_color = if data.aimbot_active {
             Color32::GREEN
         } else {
@@ -91,10 +92,11 @@ impl App {
         self.text(
             painter,
             format!("Aimbot: {:?}", self.config.aim.aimbot_hotkey),
-            position,
+            position + egui::vec2(0.0, self.config.hud.font_size * line),
             Align2::LEFT_TOP,
             Some(aimbot_color),
         );
+        line += 1.0;
 
         let triggerbot_color = if data.triggerbot_active {
             Color32::GREEN
@@ -104,23 +106,71 @@ impl App {
         self.text(
             painter,
             format!("Triggerbot: {:?}", self.config.aim.triggerbot_hotkey),
-            position + egui::vec2(0.0, self.config.hud.font_size),
+            position + egui::vec2(0.0, self.config.hud.font_size * line),
             Align2::LEFT_TOP,
             Some(triggerbot_color),
         );
+        line += 1.0;
 
-        let bhop_color = if data.bhop_active {
-            Color32::GREEN
-        } else {
-            Color32::WHITE
-        };
-        self.text(
-            painter,
-            format!("Bhop: {:?}", self.config.misc.bhop_hotkey),
-            position + egui::vec2(0.0, self.config.hud.font_size * 2.0),
-            Align2::LEFT_TOP,
-            Some(bhop_color),
-        );
+        if self.config.movement.master_enabled {
+            let master_color = if data.movement_master_active {
+                Color32::GREEN
+            } else {
+                Color32::WHITE
+            };
+            self.text(
+                painter,
+                format!("Movement: {:?}", self.config.movement.master_hotkey),
+                position + egui::vec2(0.0, self.config.hud.font_size * line),
+                Align2::LEFT_TOP,
+                Some(master_color),
+            );
+            line += 1.0;
+        }
+
+        if self.config.movement.bhop.enabled {
+            let bhop_color = if data.bhop_active {
+                Color32::GREEN
+            } else {
+                Color32::WHITE
+            };
+            let bhop_label = if self.config.movement.bhop.use_master_activation {
+                format!("Bhop: Master ({:?})", self.config.movement.master_hotkey)
+            } else {
+                format!("Bhop: {:?}", self.config.movement.bhop.hotkey)
+            };
+            self.text(
+                painter,
+                bhop_label,
+                position + egui::vec2(0.0, self.config.hud.font_size * line),
+                Align2::LEFT_TOP,
+                Some(bhop_color),
+            );
+            line += 1.0;
+        }
+
+        if self.config.movement.autostrafe.enabled {
+            let autostrafe_color = if data.autostrafe_active {
+                Color32::GREEN
+            } else {
+                Color32::WHITE
+            };
+            let autostrafe_label = if self.config.movement.autostrafe.use_master_activation {
+                format!(
+                    "Autostrafe: Master ({:?})",
+                    self.config.movement.master_hotkey
+                )
+            } else {
+                format!("Autostrafe: {:?}", self.config.movement.autostrafe.hotkey)
+            };
+            self.text(
+                painter,
+                autostrafe_label,
+                position + egui::vec2(0.0, self.config.hud.font_size * line),
+                Align2::LEFT_TOP,
+                Some(autostrafe_color),
+            );
+        }
     }
 
     pub fn draw_spectator_list(&self, painter: &Painter, data: &Data) {
@@ -128,9 +178,14 @@ impl App {
             return;
         }
 
+        let keybind_offset = if self.config.hud.keybind_list {
+            self.keybind_list_line_count() as f32 + 1.0
+        } else {
+            3.0
+        };
         let position = pos2(
             10.0,
-            data.window_size.y / 2.0 + self.config.hud.font_size * 3.0,
+            data.window_size.y / 2.0 + self.config.hud.font_size * keybind_offset,
         );
         self.text(
             painter,
@@ -176,6 +231,20 @@ impl App {
         let center = pos2(data.window_size.x / 2.0, data.window_size.y / 2.0);
         let stroke = Stroke::new(self.config.hud.line_width, color);
         painter.circle_stroke(center, radius, stroke);
+    }
+
+    fn keybind_list_line_count(&self) -> usize {
+        let mut lines = 2;
+        if self.config.movement.master_enabled {
+            lines += 1;
+        }
+        if self.config.movement.bhop.enabled {
+            lines += 1;
+        }
+        if self.config.movement.autostrafe.enabled {
+            lines += 1;
+        }
+        lines
     }
 
     fn get_distance_fov_scale(&self, distance: f32) -> f32 {
