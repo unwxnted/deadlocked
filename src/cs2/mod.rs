@@ -13,7 +13,10 @@ use crate::{
         entity::{
             Entity, EntityInfo, GrenadeInfo, planted_c4::PlantedC4, player::Player, weapon::Weapon,
         },
-        features::{aimbot::Aimbot, esp_toggle::EspToggle, rcs::Recoil, triggerbot::Triggerbot},
+        features::{
+            aimbot::Aimbot, bhop::Bunnyhop, esp_toggle::EspToggle, rcs::Recoil,
+            triggerbot::Triggerbot,
+        },
         input::Input,
         key_codes::KeyCode,
         offsets::Offsets,
@@ -21,7 +24,7 @@ use crate::{
     },
     data::{Data, PlayerData},
     math::{angles_from_vector, vec2_clamp},
-    os::{mouse::Mouse, process::Process},
+    os::{process::Process, uinput::InputDevice},
     parser::{bvh::Bvh, read_map},
 };
 
@@ -52,6 +55,7 @@ pub struct CS2 {
     aim: Aimbot,
     trigger: Triggerbot,
     esp: EspToggle,
+    bhop: Bunnyhop,
     weapon: Weapon,
     planted_c4: Option<PlantedC4>,
     last_cache: Instant,
@@ -83,7 +87,7 @@ impl CS2 {
         self.is_valid = true;
     }
 
-    pub fn run(&mut self, config: &Config, mouse: &mut Mouse) {
+    pub fn run(&mut self, config: &Config, input_device: &mut InputDevice) {
         if !self.process.is_valid() {
             self.is_valid = false;
             utils::debug!("process is no longer valid");
@@ -117,12 +121,14 @@ impl CS2 {
 
         self.triggerbot(config);
 
-        self.triggerbot_shoot(mouse);
+        self.bhop(config, input_device);
+
+        self.triggerbot_shoot(input_device);
 
         self.find_target(config);
 
-        if !self.aimbot(config, mouse) {
-            self.rcs(config, mouse);
+        if !self.aimbot(config, input_device) {
+            self.rcs(config, input_device);
         }
     }
 
@@ -254,6 +260,7 @@ impl CS2 {
         } else {
             false
         };
+        data.bhop_active = self.bhop_enabled(config);
         data.esp_active = self.esp_enabled(config);
 
         data.view_matrix = self.process.read::<Mat4>(self.offsets.direct.view_matrix);
@@ -286,6 +293,7 @@ impl CS2 {
             aim: Aimbot::default(),
             trigger: Triggerbot::default(),
             esp: EspToggle::default(),
+            bhop: Bunnyhop::default(),
             weapon: Weapon::default(),
             planted_c4: None,
             last_cache: Instant::now(),

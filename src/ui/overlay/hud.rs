@@ -108,6 +108,19 @@ impl App {
             Align2::LEFT_TOP,
             Some(triggerbot_color),
         );
+
+        let bhop_color = if data.bhop_active {
+            Color32::GREEN
+        } else {
+            Color32::WHITE
+        };
+        self.text(
+            painter,
+            format!("Bhop: {:?}", self.config.misc.bhop_hotkey),
+            position + egui::vec2(0.0, self.config.hud.font_size * 2.0),
+            Align2::LEFT_TOP,
+            Some(bhop_color),
+        );
     }
 
     pub fn draw_spectator_list(&self, painter: &Painter, data: &Data) {

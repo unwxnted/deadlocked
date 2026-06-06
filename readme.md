@@ -18,7 +18,7 @@ cd deadlocked
 # Restart your machine (required)
 ```
 
-Also make sure that the `uinput` kernel module is loaded.
+Also make sure that the `uinput` kernel module is loaded for mouse and keyboard input.
 
 Running NixOS or Fedora Atomic? See [OS-Specific Setup](os-setup.md).
 
@@ -80,6 +80,7 @@ Running NixOS or Fedora Atomic? See [OS-Specific Setup](os-setup.md).
 
 - Sniper crosshair
 - Bomb timer
+- Bunnyhop
 
 ### Unsafe
 

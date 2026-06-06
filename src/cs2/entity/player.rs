@@ -509,10 +509,9 @@ impl Player {
         cs2.process.read(self.pawn + cs2.offsets.pawn.velocity)
     }
 
-    fn is_in_air(&self, cs2: &CS2) -> bool {
+    pub fn is_on_ground(&self, cs2: &CS2) -> bool {
         let flags = cs2.process.read::<i32>(self.pawn + cs2.offsets.pawn.flags);
-        // FL_ONGROUND = (1 << 0)
-        (flags & 1) == 0
+        (flags & 1) != 0
     }
 
     pub fn is_making_sound(&self, cs2: &CS2) -> Option<SoundType> {
@@ -524,7 +523,7 @@ impl Player {
         let speed = vec2(velocity.x, velocity.y).length();
         let current_weapon = self.weapon(cs2);
 
-        let is_jumping = velocity.z > 100.0 && self.is_in_air(cs2);
+        let is_jumping = velocity.z > 100.0 && !self.is_on_ground(cs2);
         // knife walking speed is 250 units/s
         let is_walking = speed > 100.0;
         let is_standing = speed < 10.0;

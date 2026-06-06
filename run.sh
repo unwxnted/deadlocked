@@ -10,5 +10,5 @@ Please download deadlocked by cloning the Git repository: 'git clone https://git
 [[ -d '.git' ]] || fail
 
 git config core.hooksPath .hooks
-git pull
+#git pull
 cargo run --release

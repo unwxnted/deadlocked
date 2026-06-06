@@ -11,7 +11,7 @@ use crate::{
         entity::{player::Player, weapon_class::WeaponClass},
     },
     math::angles_to_fov,
-    os::mouse::Mouse,
+    os::uinput::InputDevice,
 };
 
 #[derive(Debug, Default)]
@@ -94,20 +94,20 @@ impl CS2 {
         self.trigger.shot_end = Some(now + delay + Duration::from_millis(config.shot_duration));
     }
 
-    pub fn triggerbot_shoot(&mut self, mouse: &mut Mouse) {
+    pub fn triggerbot_shoot(&mut self, input_device: &mut InputDevice) {
         let now = Instant::now();
 
         if let Some(shot_time) = self.trigger.shot_start
             && now >= shot_time
         {
-            mouse.left_press();
+            input_device.left_press();
             self.trigger.shot_start = None;
         }
 
         if let Some(shot_end) = self.trigger.shot_end
             && now >= shot_end
         {
-            mouse.left_release();
+            input_device.left_release();
             self.trigger.shot_end = None;
         }
     }

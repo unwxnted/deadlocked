@@ -11,21 +11,21 @@ use crate::{
     cs2::CS2,
     data::Data,
     message::{GameMessage, GameStatus, UiMessage},
-    os::mouse::Mouse,
+    os::uinput::InputDevice,
 };
 
 pub struct GameManager {
     channel: Channel<UiMessage, GameMessage>,
     data: Arc<Mutex<Data>>,
     config: Config,
-    mouse: Mouse,
+    input_device: InputDevice,
     cs2: CS2,
 }
 
 impl GameManager {
     pub fn new(channel: Channel<UiMessage, GameMessage>, data: Arc<Mutex<Data>>) -> Self {
-        let mouse = match Mouse::open() {
-            Ok(mouse) => mouse,
+        let input_device = match InputDevice::open() {
+            Ok(input_device) => input_device,
             Err(err) => {
                 utils::error!("error creating uinput device: {err}");
                 utils::error!("uinput kernel module is not loaded, or user is not in input group.");
@@ -37,7 +37,7 @@ impl GameManager {
             channel,
             data,
             config: Config::default(),
-            mouse,
+            input_device,
             cs2: CS2::new(),
         }
     }
@@ -72,7 +72,7 @@ impl GameManager {
                     self.send_message(UiMessage::Status(GameStatus::Working));
                     previous_status = GameStatus::Working;
                 }
-                self.cs2.run(&self.config, &mut self.mouse);
+                self.cs2.run(&self.config, &mut self.input_device);
                 let mut data = self.data.lock();
                 self.cs2.data(&self.config, &mut data);
             } else {

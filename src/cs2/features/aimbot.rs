@@ -7,7 +7,7 @@ use crate::{
         entity::{player::Player, weapon_class::WeaponClass},
     },
     math::{angles_to_fov, vec2_clamp},
-    os::mouse::Mouse,
+    os::uinput::InputDevice,
 };
 
 #[derive(Debug, Default)]
@@ -17,7 +17,7 @@ pub struct Aimbot {
 }
 
 impl CS2 {
-    pub fn aimbot(&mut self, config: &Config, mouse: &mut Mouse) -> bool {
+    pub fn aimbot(&mut self, config: &Config, input_device: &mut InputDevice) -> bool {
         let hotkey = config.aim.aimbot_hotkey;
         let config = self.aimbot_config(config);
 
@@ -107,7 +107,7 @@ impl CS2 {
 
         let alpha = 1.0 - config.inertia.clamp(0.0, 1.0) * 0.5;
         self.aim.inertia += (mouse_angles - self.aim.inertia) * alpha;
-        mouse.move_rel(self.aim.inertia);
+        input_device.move_rel(self.aim.inertia);
 
         true
     }

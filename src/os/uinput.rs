@@ -1,0 +1,268 @@
+use std::{
+    fs::File,
+    io::Write,
+    os::fd::AsRawFd,
+    path::Path,
+    sync::atomic::{AtomicBool, Ordering},
+    time::{SystemTime, UNIX_EPOCH},
+};
+
+use bytemuck::{Pod, Zeroable, cast_slice};
+use glam::{IVec2, Vec2};
+use nix::{ioctl_none, ioctl_write_int, ioctl_write_ptr, libc::c_ulong};
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+struct Timeval {
+    seconds: u64,
+    microseconds: u64,
+}
+
+unsafe impl Zeroable for Timeval {}
+unsafe impl Pod for Timeval {}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+struct InputEvent {
+    time: Timeval,
+    event_type: u16,
+    code: u16,
+    value: i32,
+}
+
+unsafe impl Zeroable for InputEvent {}
+unsafe impl Pod for InputEvent {}
+
+#[repr(C)]
+struct DeviceSetup {
+    id: InputId,
+    name: [u8; 80],
+    ff_effects_max: u32,
+}
+
+#[repr(C)]
+struct InputId {
+    bustype: u16,
+    vendor: u16,
+    product: u16,
+    version: u16,
+}
+
+const DEVICE_SETUP: DeviceSetup = DeviceSetup {
+    id: InputId {
+        bustype: 0x03,
+        vendor: 0x0451,
+        product: 0xe008,
+        version: 1,
+    },
+    name: [
+        84, 73, 45, 56, 52, 32, 80, 108, 117, 115, 32, 83, 105, 108, 118, 101, 114, 32, 67, 97,
+        108, 99, 117, 108, 97, 116, 111, 114, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0,
+    ],
+    ff_effects_max: 0,
+};
+
+const UINPUT_IOCTL_BASE: c_ulong = b'U' as c_ulong;
+ioctl_none!(ui_dev_create, UINPUT_IOCTL_BASE, 1);
+ioctl_none!(ui_dev_destroy, UINPUT_IOCTL_BASE, 2);
+ioctl_write_int!(ui_set_evbit, UINPUT_IOCTL_BASE, 100);
+ioctl_write_int!(ui_set_keybit, UINPUT_IOCTL_BASE, 101);
+ioctl_write_int!(ui_set_relbit, UINPUT_IOCTL_BASE, 102);
+ioctl_write_ptr!(ui_dev_setup, UINPUT_IOCTL_BASE, 3, DeviceSetup);
+
+const EV_SYN: u16 = 0x00;
+const EV_KEY: u16 = 0x01;
+const EV_REL: u16 = 0x02;
+const SYN_REPORT: u16 = 0x00;
+const AXIS_X: u16 = 0x00;
+const AXIS_Y: u16 = 0x01;
+const BTN_LEFT: u16 = 0x110;
+const KEY_SPACE: u16 = 57;
+const KEY_ESC: u16 = 1;
+const KEY_ENTER: u16 = 28;
+const KEY_A: u16 = 30;
+const KEY_Z: u16 = 44;
+
+struct VirtualDevice {
+    file: File,
+}
+
+pub struct InputDevice {
+    mouse: VirtualDevice,
+    keyboard: VirtualDevice,
+}
+
+static CREATED: AtomicBool = AtomicBool::new(false);
+
+impl InputDevice {
+    pub fn open() -> Result<Self, String> {
+        if CREATED.swap(true, Ordering::Relaxed) {
+            return Err("input device already initialized".into());
+        }
+
+        let mouse = VirtualDevice::open_mouse().inspect_err(|_| {
+            CREATED.store(false, Ordering::Relaxed);
+        })?;
+        let keyboard = VirtualDevice::open_keyboard().inspect_err(|_| {
+            CREATED.store(false, Ordering::Relaxed);
+        })?;
+
+        Ok(Self { mouse, keyboard })
+    }
+
+    pub fn move_rel(&mut self, coords: Vec2) {
+        let coords = IVec2::new(coords.x as i32, coords.y as i32);
+        if coords == IVec2::ZERO {
+            return;
+        }
+
+        let time = Self::time_now();
+        let events = [
+            InputEvent {
+                time,
+                event_type: EV_REL,
+                code: AXIS_X,
+                value: coords.x,
+            },
+            InputEvent {
+                time,
+                event_type: EV_REL,
+                code: AXIS_Y,
+                value: coords.y,
+            },
+            Self::syn(time),
+        ];
+
+        self.mouse.write_events(&events);
+    }
+
+    pub fn left_press(&mut self) {
+        self.mouse.key(BTN_LEFT, 1);
+    }
+
+    pub fn left_release(&mut self) {
+        self.mouse.key(BTN_LEFT, 0);
+    }
+
+    pub fn space_press(&mut self) {
+        self.keyboard.key(KEY_SPACE, 1);
+    }
+
+    pub fn space_release(&mut self) {
+        self.keyboard.key(KEY_SPACE, 0);
+    }
+
+    fn syn(time: Timeval) -> InputEvent {
+        InputEvent {
+            time,
+            event_type: EV_SYN,
+            code: SYN_REPORT,
+            value: 0,
+        }
+    }
+
+    fn time_now() -> Timeval {
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+        Timeval {
+            seconds: now.as_secs(),
+            microseconds: now.subsec_micros() as u64,
+        }
+    }
+}
+
+impl VirtualDevice {
+    fn open_mouse() -> Result<Self, String> {
+        let file = File::options()
+            .write(true)
+            .open("/dev/uinput")
+            .map_err(|e| e.to_string())?;
+        let fd = file.as_raw_fd();
+
+        unsafe {
+            ui_set_evbit(fd, EV_SYN as u64).map_err(|e| e.to_string())?;
+            ui_set_evbit(fd, EV_KEY as u64).map_err(|e| e.to_string())?;
+            ui_set_evbit(fd, EV_REL as u64).map_err(|e| e.to_string())?;
+
+            ui_set_relbit(fd, AXIS_X as u64).map_err(|e| e.to_string())?;
+            ui_set_relbit(fd, AXIS_Y as u64).map_err(|e| e.to_string())?;
+            ui_set_keybit(fd, BTN_LEFT as u64).map_err(|e| e.to_string())?;
+
+            ui_dev_setup(fd, &DEVICE_SETUP).map_err(|e| e.to_string())?;
+            ui_dev_create(fd).map_err(|e| e.to_string())?;
+        }
+
+        Ok(Self { file })
+    }
+
+    fn open_keyboard() -> Result<Self, String> {
+        let file = File::options()
+            .write(true)
+            .open("/dev/uinput")
+            .map_err(|e| e.to_string())?;
+        let fd = file.as_raw_fd();
+
+        unsafe {
+            ui_set_evbit(fd, EV_SYN as u64).map_err(|e| e.to_string())?;
+            ui_set_evbit(fd, EV_KEY as u64).map_err(|e| e.to_string())?;
+
+            for code in [KEY_ESC, KEY_ENTER, KEY_SPACE, KEY_A, KEY_Z] {
+                ui_set_keybit(fd, code as u64).map_err(|e| e.to_string())?;
+            }
+
+            ui_dev_setup(fd, &DEVICE_SETUP).map_err(|e| e.to_string())?;
+            ui_dev_create(fd).map_err(|e| e.to_string())?;
+        }
+
+        Ok(Self { file })
+    }
+
+    fn key(&mut self, code: u16, pressed: i32) {
+        let time = InputDevice::time_now();
+        let events = [
+            InputEvent {
+                time,
+                event_type: EV_KEY,
+                code,
+                value: pressed,
+            },
+            InputDevice::syn(time),
+        ];
+
+        self.write_events(&events);
+    }
+
+    fn write_events(&mut self, events: &[InputEvent]) {
+        self.file.write_all(cast_slice(events)).unwrap();
+    }
+}
+
+impl Drop for VirtualDevice {
+    fn drop(&mut self) {
+        let _ = unsafe { ui_dev_destroy(self.file.as_raw_fd()) };
+    }
+}
+
+impl Drop for InputDevice {
+    fn drop(&mut self) {
+        CREATED.store(false, Ordering::Relaxed);
+    }
+}
+
+pub fn check_uinput() -> bool {
+    let path = Path::new("/dev/uinput");
+    if !path.exists() {
+        utils::error!("the uinput kernel module is not loaded.");
+        utils::error!("this module needs to be loaded for input emulation to work.");
+        utils::error!("please carefully read the readme before using.");
+        return false;
+    }
+    if File::options().write(true).open(path).is_err() {
+        utils::error!("user has no write permissions for /dev/uinput.");
+        utils::error!("did you run the setup script?");
+        utils::error!("please carefully read the readme before using.");
+        return false;
+    }
+    true
+}

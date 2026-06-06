@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use utils::{channel::Channel, log::LoggerOptions, sync::Mutex};
 
-use crate::{config::BASE_PATH, data::Data, os::mouse::check_uinput, ui::app::App};
+use crate::{config::BASE_PATH, data::Data, os::uinput::check_uinput, ui::app::App};
 
 mod config;
 mod constants;

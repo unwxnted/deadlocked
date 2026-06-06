@@ -10,7 +10,7 @@ use crate::{
         entity::{player::Player, weapon_class::WeaponClass},
     },
     math::{compute_max_acceleration_component, record_acceleration, soft_clamp_acceleration},
-    os::mouse::Mouse,
+    os::uinput::InputDevice,
 };
 
 #[derive(Debug)]
@@ -40,7 +40,7 @@ impl Recoil {
 }
 
 impl CS2 {
-    pub fn rcs(&mut self, config: &Config, mouse: &mut Mouse) {
+    pub fn rcs(&mut self, config: &Config, input_device: &mut InputDevice) {
         let config = self.rcs_config(config);
 
         if !config.enabled {
@@ -131,6 +131,6 @@ impl CS2 {
 
         self.recoil.unaccounted = desired - ready;
 
-        mouse.move_rel(ready)
+        input_device.move_rel(ready)
     }
 }
