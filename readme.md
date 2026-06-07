@@ -6,7 +6,7 @@
 
 [![Casual Maintenance Intended](https://casuallymaintained.tech/badge.svg)](https://casuallymaintained.tech/)
 
-simple cs2 aimbot and esp, for linux only.
+This repo is a fork of deadlocked by avitran0, but enhanced with some extra features or things.
 
 ## Setup
 
