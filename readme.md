@@ -12,7 +12,7 @@ simple cs2 aimbot and esp, for linux only.
 
 ```bash
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-git clone https://github.com/avitran0/deadlocked
+git clone https://github.com/unwxnted/deadlocked
 cd deadlocked
 ./setup.sh
 # Restart your machine (required)
@@ -36,6 +36,7 @@ Running NixOS or Fedora Atomic? See [OS-Specific Setup](os-setup.md).
 - FOV
 - Smooth
 - Start bullet
+- Aim Jitter
 - Targeting mode
 - Visibility check (VPK parsing)
 - Head only/whole body
@@ -65,6 +66,11 @@ Running NixOS or Fedora Atomic? See [OS-Specific Setup](os-setup.md).
 - Scope check
 - Velocity threshold
 - Head only mode
+
+### Movement
+
+- BunnyHop (jump assist)
+- Auto Stafe (sync A-D keys)
 
 ### Standalone RCS
 
