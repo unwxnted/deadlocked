@@ -118,6 +118,25 @@ impl App {
                 self.send_config();
             }
 
+            if checkbox(
+                ui,
+                "Aim Humanization",
+                &mut self.weapon_config().aimbot.humanization_enabled,
+            ) {
+                self.send_config();
+            }
+
+            if drag(
+                ui,
+                "Humanization Strength",
+                DragValue::new(&mut self.weapon_config().aimbot.humanization_strength)
+                    .range(0.0..=1.0)
+                    .speed(0.01)
+                    .max_decimals(2),
+            ) {
+                self.send_config();
+            }
+
             if drag(
                 ui,
                 "Inertia",
@@ -145,6 +164,40 @@ impl App {
                     .speed(0.001)
                     .suffix("°")
                     .max_decimals(3),
+            ) {
+                self.send_config();
+            }
+
+            if drag(
+                ui,
+                "Jitter Smooth",
+                DragValue::new(&mut self.weapon_config().aimbot.jitter.smooth)
+                    .range(0.0..=20.0)
+                    .speed(0.02)
+                    .max_decimals(1),
+            ) {
+                self.send_config();
+            }
+
+            if drag(
+                ui,
+                "Micro Jitter Amount",
+                DragValue::new(&mut self.weapon_config().aimbot.jitter.micro_amount)
+                    .range(0.0..=0.1)
+                    .speed(0.0005)
+                    .suffix("°")
+                    .max_decimals(4),
+            ) {
+                self.send_config();
+            }
+
+            if drag(
+                ui,
+                "Micro Jitter Smooth",
+                DragValue::new(&mut self.weapon_config().aimbot.jitter.micro_smooth)
+                    .range(0.0..=20.0)
+                    .speed(0.02)
+                    .max_decimals(1),
             ) {
                 self.send_config();
             }

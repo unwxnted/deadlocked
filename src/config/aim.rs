@@ -41,6 +41,8 @@ pub struct AimbotConfig {
     pub flash_check: bool,
     pub fov: f32,
     pub smooth: f32,
+    pub humanization_enabled: bool,
+    pub humanization_strength: f32,
     pub inertia: f32,
     pub jitter: JitterConfig,
     pub bones: Vec<Bones>,
@@ -60,6 +62,8 @@ impl Default for AimbotConfig {
             flash_check: true,
             fov: 2.5,
             smooth: 5.0,
+            humanization_enabled: false,
+            humanization_strength: 0.5,
             inertia: 1.0,
             jitter: JitterConfig::default(),
             bones: vec![
@@ -81,6 +85,9 @@ impl Default for AimbotConfig {
 pub struct JitterConfig {
     pub enabled: bool,
     pub amount: f32,
+    pub smooth: f32,
+    pub micro_amount: f32,
+    pub micro_smooth: f32,
 }
 
 impl Default for JitterConfig {
@@ -88,6 +95,9 @@ impl Default for JitterConfig {
         Self {
             enabled: false,
             amount: 0.03,
+            smooth: 2.6,
+            micro_amount: 0.0,
+            micro_smooth: 5.0,
         }
     }
 }
