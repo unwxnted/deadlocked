@@ -224,7 +224,6 @@ impl Aimbot {
     fn error_ratio(aim_delta: Vec2, max_fov: f32) -> f32 {
         (aim_delta.length() / max_fov.max(0.1)).clamp(0.0, 1.0)
     }
-
 }
 
 impl JitterLayer {
