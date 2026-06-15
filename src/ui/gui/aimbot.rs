@@ -281,6 +281,14 @@ impl App {
                 self.send_config();
             }
 
+            if checkbox(
+                ui,
+                "Enable Magnet Trigger",
+                &mut self.weapon_config().triggerbot.magnet_enabled,
+            ) {
+                self.send_config();
+            }
+
             if keybind(
                 ui,
                 "triggerbot_hotkey",

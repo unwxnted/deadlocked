@@ -120,15 +120,15 @@ impl CS2 {
 
         self.esp_toggle(config);
 
-        self.triggerbot(config);
+        self.find_target(config);
+
+        let triggerbot_aiming = self.triggerbot(config, input_device);
 
         self.movement(config, input_device);
 
         self.triggerbot_shoot(input_device);
 
-        self.find_target(config);
-
-        if !self.aimbot(config, input_device) {
+        if !triggerbot_aiming && !self.aimbot(config, input_device) {
             self.rcs(config, input_device);
         }
     }

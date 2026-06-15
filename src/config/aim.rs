@@ -137,6 +137,7 @@ pub enum TargetingMode {
 pub struct TriggerbotConfig {
     pub enable_override: bool,
     pub enabled: bool,
+    pub magnet_enabled: bool,
     pub delay: RangeInclusive<u64>,
     pub shot_duration: u64,
     pub mode: KeyMode,
@@ -152,6 +153,7 @@ impl Default for TriggerbotConfig {
         Self {
             enable_override: false,
             enabled: false,
+            magnet_enabled: false,
             delay: 100..=200,
             shot_duration: 200,
             mode: KeyMode::Hold,

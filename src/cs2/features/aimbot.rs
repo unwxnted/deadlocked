@@ -34,85 +34,126 @@ impl CS2 {
         let config = self.aimbot_config(config);
 
         if !config.enabled {
-            self.aim.reset_jitter();
+            self.reset_aimbot_state();
             return false;
         }
 
         if !Self::check_hotkey(&self.input, config.mode, hotkey, &mut self.aim.active) {
-            self.aim.reset_jitter();
+            self.reset_aimbot_state();
             return false;
         }
 
-        let Some(target) = &self.target.player else {
-            self.aim.reset_jitter();
+        let Some(target) = self.active_target() else {
+            self.reset_aimbot_state();
             return false;
         };
-
-        if !target.is_valid(self) {
-            self.aim.reset_jitter();
-            return false;
-        }
 
         let Some(local_player) = Player::local_player(self) else {
+            self.reset_aimbot_state();
             return false;
         };
 
-        let weapon_class = local_player.weapon_class(self);
-        let disallowed_weapons = [
-            WeaponClass::Unknown,
-            WeaponClass::Knife,
-            WeaponClass::Grenade,
-        ];
-        if disallowed_weapons.contains(&weapon_class) {
-            self.aim.reset_jitter();
+        if !self.aimbot_weapon_allowed(&local_player) {
+            self.reset_aimbot_state();
             return false;
         }
 
         if config.flash_check && local_player.is_flashed(self) {
-            self.aim.reset_jitter();
+            self.reset_aimbot_state();
             return false;
         }
 
         if config.visibility_check && !target.visible(self, &local_player) {
-            self.aim.reset_jitter();
+            self.reset_aimbot_state();
             return false;
         }
 
         if local_player.shots_fired(self) < config.start_bullet {
-            self.aim.reset_jitter();
+            self.reset_aimbot_state();
             return false;
         }
 
-        let target_angle = {
-            let mut smallest_fov = 360.0;
-            let mut smallest_angle = glam::Vec2::ZERO;
-            for bone in &config.bones {
-                let bone_pos = target.bone_position(self, bone.u64());
-                let angle =
-                    self.angle_to_target(&local_player, &bone_pos, &self.target.previous_aim_punch);
-                let fov = angles_to_fov(&local_player.view_angles(self), &angle);
-                if fov < smallest_fov {
-                    smallest_fov = fov;
-                    smallest_angle = angle;
-                }
-            }
-
-            smallest_angle
+        let Some(target_angle) = self.target_angle_from_bones(config, &local_player, &target)
+        else {
+            self.reset_aimbot_state();
+            return false;
         };
 
         let view_angles = local_player.view_angles(self);
-        let max_fov = config.fov
-            * if config.distance_adjusted_fov {
-                self.distance_scale(self.target.distance)
-            } else {
-                1.0
-            };
+        let max_fov = self.aimbot_max_fov(config, self.target.distance);
 
         if angles_to_fov(&view_angles, &target_angle) > max_fov {
-            self.aim.reset_jitter();
+            self.reset_aimbot_state();
             return false;
         }
 
+        self.apply_aimbot_step(config, &local_player, target_angle, max_fov, input_device);
+        self.recoil.previous = local_player.aim_punch(self);
+
+        true
+    }
+
+    pub(crate) fn reset_aimbot_state(&mut self) {
+        self.aim.reset();
+    }
+
+    pub(crate) fn active_target(&self) -> Option<Player> {
+        let target = self.target.player?;
+        target.is_valid(self).then_some(target)
+    }
+
+    pub(crate) fn aimbot_weapon_allowed(&self, local_player: &Player) -> bool {
+        let weapon_class = local_player.weapon_class(self);
+        ![
+            WeaponClass::Unknown,
+            WeaponClass::Knife,
+            WeaponClass::Grenade,
+        ]
+        .contains(&weapon_class)
+    }
+
+    pub(crate) fn target_angle_from_bones(
+        &self,
+        config: &AimbotConfig,
+        local_player: &Player,
+        target: &Player,
+    ) -> Option<Vec2> {
+        let view_angles = local_player.view_angles(self);
+        let mut smallest_fov = 360.0;
+        let mut smallest_angle = None;
+
+        for bone in &config.bones {
+            let bone_pos = target.bone_position(self, bone.u64());
+            let angle =
+                self.angle_to_target(local_player, &bone_pos, &self.target.previous_aim_punch);
+            let fov = angles_to_fov(&view_angles, &angle);
+            if fov < smallest_fov {
+                smallest_fov = fov;
+                smallest_angle = Some(angle);
+            }
+        }
+
+        smallest_angle
+    }
+
+    pub(crate) fn aimbot_max_fov(&self, config: &AimbotConfig, distance: f32) -> f32 {
+        config.fov
+            * if config.distance_adjusted_fov {
+                self.distance_scale(distance)
+            } else {
+                1.0
+            }
+    }
+
+    pub(crate) fn apply_aimbot_step(
+        &mut self,
+        config: &AimbotConfig,
+        local_player: &Player,
+        target_angle: Vec2,
+        max_fov: f32,
+        input_device: &mut InputDevice,
+    ) {
+        let view_angles = local_player.view_angles(self);
         let jitter_offset = self.aim.jitter(config);
         let mut jittered_target_angle = target_angle + jitter_offset;
         vec2_clamp(&mut jittered_target_angle);
@@ -134,16 +175,17 @@ impl CS2 {
         let alpha = 1.0 - config.inertia.clamp(0.0, 1.0) * 0.5;
         self.aim.inertia += (mouse_angles - self.aim.inertia) * alpha;
         input_device.move_rel(self.aim.inertia);
-
-        self.recoil.previous = local_player.aim_punch(self);
-
-        true
     }
 }
 
 impl Aimbot {
     const JITTER_UPDATE_INTERVAL: Duration = Duration::from_millis(40);
     const MICRO_JITTER_UPDATE_INTERVAL: Duration = Duration::from_millis(12);
+
+    fn reset(&mut self) {
+        self.inertia = Vec2::ZERO;
+        self.reset_jitter();
+    }
 
     fn reset_jitter(&mut self) {
         self.jitter.reset();
