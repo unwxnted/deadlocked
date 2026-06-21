@@ -1,21 +1,20 @@
 use std::{
     cell::RefCell,
     collections::HashMap,
-    fs::{File, OpenOptions, read_dir, read_link},
+    fs::{File, read_dir, read_link},
     io::{BufRead, BufReader},
-    os::unix::fs::FileExt,
     path::PathBuf,
 };
 
 use bytemuck::Pod;
-use nix::libc::{self, iovec, process_vm_readv};
 
+use super::kernel_mem::KernelMem;
 use crate::constants::{cs2, elf};
 
 #[derive(Debug)]
 pub struct Process {
     pub pid: i32,
-    file: File,
+    kmem: KernelMem,
     path: PathBuf,
     pub min: u64,
     pub max: u64,
@@ -27,25 +26,29 @@ impl Process {
         if pid == -1 {
             return Self {
                 pid,
+                kmem: KernelMem::open().unwrap_or_else(|e| {
+                    utils::error!("kernel module not available: {e}");
+                    std::process::exit(1);
+                }),
                 path: PathBuf::from(format!("/proc/{pid}")),
-                file: OpenOptions::new().read(true).open("/dev/null").unwrap(),
                 min: u64::MAX,
                 max: u64::MIN,
                 string_cache: RefCell::new(HashMap::new()),
             };
         }
 
-        let file = OpenOptions::new()
-            .read(true)
-            .open(format!("/proc/{pid}/mem"))
-            .unwrap_or_else(|e| {
-                utils::error!("failed to open /proc/{pid}/mem: {e}");
-                OpenOptions::new().read(true).open("/dev/null").unwrap()
-            });
+        let kmem = KernelMem::open().unwrap_or_else(|e| {
+            utils::error!("kernel module not available: {e}");
+            utils::error!(
+                "load the deadlocked kernel module and ensure /dev/deadlocked is accessible"
+            );
+            std::process::exit(1);
+        });
+
         let mut ret = Self {
             pid,
+            kmem,
             path: PathBuf::from(format!("/proc/{pid}")),
-            file,
             min: u64::MAX,
             max: u64::MIN,
             string_cache: RefCell::new(HashMap::new()),
@@ -78,59 +81,20 @@ impl Process {
     pub fn read<T: Pod + Default>(&self, address: u64) -> T {
         let mut t = T::default();
         let buffer = bytemuck::bytes_of_mut(&mut t);
-
-        let local_iov = iovec {
-            iov_base: buffer.as_mut_ptr() as *mut libc::c_void,
-            iov_len: buffer.len(),
-        };
-        let remote_iov = iovec {
-            iov_base: address as *mut libc::c_void,
-            iov_len: buffer.len(),
-        };
-
-        unsafe {
-            process_vm_readv(self.pid, &local_iov, 1, &remote_iov, 1, 0);
-        }
-
+        let _ = self.kmem.read(self.pid, address, buffer);
         t
     }
 
     pub fn read_or_zeroed<T: Pod>(&self, address: u64) -> T {
         let mut t = T::zeroed();
         let buffer = bytemuck::bytes_of_mut(&mut t);
-
-        let local_iov = iovec {
-            iov_base: buffer.as_mut_ptr() as *mut libc::c_void,
-            iov_len: buffer.len(),
-        };
-        let remote_iov = iovec {
-            iov_base: address as *mut libc::c_void,
-            iov_len: buffer.len(),
-        };
-
-        unsafe {
-            process_vm_readv(self.pid, &local_iov, 1, &remote_iov, 1, 0);
-        }
-
+        let _ = self.kmem.read(self.pid, address, buffer);
         t
     }
 
     pub fn read_vec(&self, address: u64, length: usize) -> Vec<u8> {
         let mut buffer = vec![0u8; length];
-
-        let local_iov = iovec {
-            iov_base: buffer.as_mut_ptr() as *mut libc::c_void,
-            iov_len: buffer.len(),
-        };
-        let remote_iov = iovec {
-            iov_base: address as *mut libc::c_void,
-            iov_len: buffer.len(),
-        };
-
-        unsafe {
-            process_vm_readv(self.pid, &local_iov, 1, &remote_iov, 1, 0);
-        }
-
+        let _ = self.kmem.read(self.pid, address, &mut buffer);
         buffer
     }
 
@@ -144,19 +108,7 @@ impl Process {
         assert!(stride >= size);
 
         let mut buffer = vec![0u8; stride * count];
-
-        let local_iov = iovec {
-            iov_base: buffer.as_mut_ptr() as *mut libc::c_void,
-            iov_len: buffer.len(),
-        };
-        let remote_iov = iovec {
-            iov_base: address as *mut libc::c_void,
-            iov_len: buffer.len(),
-        };
-
-        unsafe {
-            process_vm_readv(self.pid, &local_iov, 1, &remote_iov, 1, 0);
-        }
+        let _ = self.kmem.read(self.pid, address, &mut buffer);
 
         let mut result = vec![T::default(); count];
         let result_ptr = result.as_mut_ptr() as *mut u8;
@@ -172,23 +124,9 @@ impl Process {
         result
     }
 
-    #[cfg(feature = "read-only")]
-    pub fn write<T: Pod>(&self, _address: u64, _value: T) {}
-
-    #[cfg(not(feature = "read-only"))]
     pub fn write<T: Pod>(&self, address: u64, value: T) {
-        let mut buffer = bytemuck::bytes_of(&value).to_vec();
-
-        let local_iov = iovec {
-            iov_base: buffer.as_mut_ptr() as *mut libc::c_void,
-            iov_len: buffer.len(),
-        };
-        let remote_iov = iovec {
-            iov_base: address as *mut libc::c_void,
-            iov_len: buffer.len(),
-        };
-
-        unsafe { nix::libc::process_vm_writev(self.pid, &local_iov, 1, &remote_iov, 1, 0) };
+        let buffer = bytemuck::bytes_of(&value);
+        let _ = self.kmem.write(self.pid, address, buffer);
     }
 
     pub fn read_string(&self, address: u64) -> String {
@@ -219,7 +157,7 @@ impl Process {
 
     pub fn read_bytes(&self, address: u64, count: u64) -> Vec<u8> {
         let mut buffer = vec![0u8; count as usize];
-        self.file.read_at(&mut buffer, address).unwrap_or(0);
+        let _ = self.kmem.read(self.pid, address, &mut buffer);
         buffer
     }
 
@@ -302,7 +240,6 @@ impl Process {
         offset: u64,
         instruction_size: u64,
     ) -> u64 {
-        // rip is instruction pointer
         let rip_address = self.read::<i32>(instruction + offset);
         instruction
             .wrapping_add(instruction_size)

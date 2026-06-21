@@ -36,5 +36,4 @@ overflow-checks = false
 debug = true
 lto = true
 
-[features]
-read-only = []
+

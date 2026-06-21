@@ -2,7 +2,12 @@ use std::sync::Arc;
 
 use utils::{channel::Channel, log::LoggerOptions, sync::Mutex};
 
-use crate::{config::BASE_PATH, data::Data, os::uinput::check_uinput, ui::app::App};
+use crate::{
+    config::BASE_PATH,
+    data::Data,
+    os::{kernel_mem::check_deadlocked, uinput::check_uinput},
+    ui::app::App,
+};
 
 mod config;
 mod constants;
@@ -32,6 +37,10 @@ fn main() {
         },
     )
     .expect("failed to initialize logger");
+
+    if !check_deadlocked() {
+        return;
+    }
 
     if !check_uinput() {
         return;
