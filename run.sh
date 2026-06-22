@@ -10,5 +10,10 @@ Please download deadlocked by cloning the Git repository: 'git clone https://git
 [[ -d '.git' ]] || fail
 
 git config core.hooksPath .hooks
-#git pull
+
+# auto-wrap with sg to ensure the deadlocked group is active
+if [ ! -r /dev/deadlocked ] && getent group deadlocked > /dev/null 2>&1; then
+	exec sg deadlocked -c "cargo run --release"
+fi
+
 cargo run --release

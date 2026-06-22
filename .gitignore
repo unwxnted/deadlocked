@@ -7,3 +7,13 @@
 /radar/node_modules
 
 config.toml
+
+# kernel module build artifacts
+/kmod/*.ko
+/kmod/*.mod
+/kmod/*.mod.c
+/kmod/*.o
+/kmod/Module.symvers
+/kmod/modules.order
+/kmod/Module.markers
+/kmod/.*.cmd

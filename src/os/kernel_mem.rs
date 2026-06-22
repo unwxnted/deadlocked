@@ -1,9 +1,4 @@
-use std::{
-    fs::File,
-    io,
-    os::unix::io::{AsRawFd, RawFd},
-    path::Path,
-};
+use std::{fs::File, io, os::unix::io::AsRawFd, path::Path};
 
 use nix::libc;
 
@@ -36,7 +31,7 @@ const MAX_TRANSFER: usize = 1_048_576;
 
 #[derive(Debug)]
 pub struct KernelMem {
-    fd: RawFd,
+    file: File,
 }
 
 impl KernelMem {
@@ -45,8 +40,7 @@ impl KernelMem {
             .read(true)
             .write(true)
             .open("/dev/deadlocked")?;
-        let fd = file.as_raw_fd();
-        Ok(Self { fd })
+        Ok(Self { file })
     }
 
     pub fn is_available() -> bool {
@@ -76,7 +70,7 @@ impl KernelMem {
 
         let ret = unsafe {
             libc::ioctl(
-                self.fd,
+                self.file.as_raw_fd(),
                 IOCTL_DEADLOCKED_READ as libc::c_ulong,
                 &mut rw as *mut DeadlockedRW,
             )
@@ -131,7 +125,7 @@ impl KernelMem {
 
         let ret = unsafe {
             libc::ioctl(
-                self.fd,
+                self.file.as_raw_fd(),
                 IOCTL_DEADLOCKED_WRITE as libc::c_ulong,
                 &mut rw as *mut DeadlockedRW,
             )

@@ -50,6 +50,7 @@ fi
 echo "built kernel module: kmod/deadlocked.ko"
 
 # copy to a standard location
+sudo mkdir -p /lib/modules/$(uname -r)/extra
 sudo cp kmod/deadlocked.ko /lib/modules/$(uname -r)/extra/
 sudo depmod
 echo "installed kernel module"
