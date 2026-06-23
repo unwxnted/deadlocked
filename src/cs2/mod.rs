@@ -67,7 +67,7 @@ impl CS2 {
     }
 
     pub fn setup(&mut self) {
-        let Some(process) = Process::open(cs2::PROCESS_NAME) else {
+        let Some(process) = Process::open(cs2::process_name()) else {
             self.is_valid = false;
             return;
         };

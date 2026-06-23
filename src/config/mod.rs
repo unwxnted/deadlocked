@@ -47,7 +47,11 @@ impl Default for Config {
     }
 }
 
-pub const DEFAULT_CONFIG_NAME: &str = "deadlocked.toml";
+pub fn default_config_name() -> &'static str {
+    &DEFAULT_CONFIG_NAME
+}
+static DEFAULT_CONFIG_NAME: LazyLock<String> =
+    LazyLock::new(|| crate::obfstr!("deadlocked.toml").decrypt());
 
 pub static BASE_PATH: LazyLock<PathBuf> = LazyLock::new(|| {
     let path = std::env::var_os("XDG_CONFIG_HOME")
@@ -59,7 +63,7 @@ pub static BASE_PATH: LazyLock<PathBuf> = LazyLock::new(|| {
             }
         })
         .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".config")))
-        .map(|base| base.join("deadlocked"))
+        .map(|base| base.join(crate::obfstr!("deadlocked").decrypt()))
         .unwrap_or_else(|| {
             std::env::current_exe()
                 .ok()
@@ -73,7 +77,7 @@ pub static BASE_PATH: LazyLock<PathBuf> = LazyLock::new(|| {
 });
 
 pub static CONFIG_PATH: LazyLock<PathBuf> = LazyLock::new(|| {
-    let path = BASE_PATH.join("configs");
+    let path = BASE_PATH.join(crate::obfstr!("configs").decrypt());
     if !path.exists() {
         let _ = std::fs::create_dir_all(&path);
     }
@@ -141,7 +145,7 @@ pub fn available_configs() -> Vec<PathBuf> {
         files.push(file.path())
     }
     if files.is_empty() {
-        let path = CONFIG_PATH.join(DEFAULT_CONFIG_NAME);
+        let path = CONFIG_PATH.join(default_config_name());
         write_config(&Config::default(), &path);
         files.push(path);
     }

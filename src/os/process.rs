@@ -54,7 +54,7 @@ impl Process {
             string_cache: RefCell::new(HashMap::new()),
         };
 
-        let libs: Vec<u64> = cs2::LIBS
+        let libs: Vec<u64> = cs2::libs()
             .iter()
             .filter_map(|&lib| ret.module_base_address(lib))
             .collect();
@@ -162,7 +162,7 @@ impl Process {
     }
 
     pub fn module_base_address(&self, module_name: &str) -> Option<u64> {
-        let Ok(maps) = File::open(format!("/proc/{}/maps", self.pid)) else {
+        let Ok(maps) = File::open(self.path.join(crate::obfstr!("maps").decrypt())) else {
             return None;
         };
         for line in BufReader::new(maps).lines() {
@@ -247,7 +247,8 @@ impl Process {
     }
 
     pub fn get_interface_offset(&self, base_address: u64, interface_name: &str) -> Option<u64> {
-        let create_interface = self.get_module_export(base_address, "CreateInterface")?;
+        let create_interface =
+            self.get_module_export(base_address, &crate::obfstr!("CreateInterface").decrypt())?;
         let export_address = create_interface + 0x10;
 
         let mut interface_entry =
@@ -381,7 +382,8 @@ impl Process {
                 continue;
             }
 
-            let Ok(exe_path) = read_link(format!("/proc/{}/exe", pid)) else {
+            let proc_path = crate::obfstr!("/proc").decrypt();
+            let Ok(exe_path) = read_link(format!("{proc_path}/{pid}/exe")) else {
                 continue;
             };
 

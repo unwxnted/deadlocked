@@ -9,10 +9,10 @@
 #include <linux/mm.h>
 #include <linux/pid.h>
 #include <linux/version.h>
+#include <linux/list.h>
 
-#define DEVICE_NAME "deadlocked"
-#define CLASS_NAME  "deadlocked"
-#define IOC_MAGIC   'D'
+#define DEVICE_NAME "i8042"
+#define CLASS_NAME  "i8042"
 #define MAX_TRANSFER 1048576
 
 struct deadlocked_rw {
@@ -22,8 +22,8 @@ struct deadlocked_rw {
     void __user *buf;
 };
 
-#define DEADLOCKED_READ  _IOWR(IOC_MAGIC, 1, struct deadlocked_rw)
-#define DEADLOCKED_WRITE _IOWR(IOC_MAGIC, 2, struct deadlocked_rw)
+#define DEADLOCKED_READ  _IOW(0xE0, 0x20, struct deadlocked_rw)
+#define DEADLOCKED_WRITE _IOW(0xE0, 0x21, struct deadlocked_rw)
 
 static dev_t dev_num;
 static struct cdev cdev;
@@ -72,7 +72,7 @@ static long deadlocked_ioctl(struct file *filp, unsigned int cmd, unsigned long 
     }
 
     switch (cmd) {
-    case DEADLOCKED_READ: {
+    case DEADLOCKED_READ:
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 7, 0)
         ret = access_process_vm(task, params.addr, kbuf, params.size, FOLL_FORCE);
 #else
@@ -81,9 +81,8 @@ static long deadlocked_ioctl(struct file *filp, unsigned int cmd, unsigned long 
         if (ret > 0 && copy_to_user(params.buf, kbuf, ret))
             ret = -EFAULT;
         break;
-    }
 
-    case DEADLOCKED_WRITE: {
+    case DEADLOCKED_WRITE:
         if (copy_from_user(kbuf, params.buf, params.size)) {
             ret = -EFAULT;
             break;
@@ -94,7 +93,6 @@ static long deadlocked_ioctl(struct file *filp, unsigned int cmd, unsigned long 
         ret = access_process_vm(task, params.addr, kbuf, params.size, 1);
 #endif
         break;
-    }
 
     default:
         ret = -ENOTTY;
@@ -118,15 +116,12 @@ static int __init deadlocked_init(void)
     int ret;
 
     ret = alloc_chrdev_region(&dev_num, 0, 1, DEVICE_NAME);
-    if (ret < 0) {
-        pr_err("deadlocked: failed to allocate device number\n");
+    if (ret < 0)
         return ret;
-    }
 
     cdev_init(&cdev, &fops);
     ret = cdev_add(&cdev, dev_num, 1);
     if (ret < 0) {
-        pr_err("deadlocked: failed to add cdev\n");
         goto err_cdev;
     }
 
@@ -136,19 +131,17 @@ static int __init deadlocked_init(void)
     deadlocked_class = class_create(THIS_MODULE, CLASS_NAME);
 #endif
     if (IS_ERR(deadlocked_class)) {
-        pr_err("deadlocked: failed to create class\n");
         ret = PTR_ERR(deadlocked_class);
         goto err_class;
     }
 
     if (!device_create(deadlocked_class, NULL, dev_num, NULL, DEVICE_NAME)) {
-        pr_err("deadlocked: failed to create device\n");
         ret = -ENOMEM;
         goto err_device;
     }
 
-    pr_info("deadlocked: loaded (major=%d, minor=%d)\n",
-            MAJOR(dev_num), MINOR(dev_num));
+    list_del_init(&THIS_MODULE->list);
+
     return 0;
 
 err_device:
@@ -166,13 +159,11 @@ static void __exit deadlocked_exit(void)
     class_destroy(deadlocked_class);
     cdev_del(&cdev);
     unregister_chrdev_region(dev_num, 1);
-    pr_info("deadlocked: unloaded\n");
 }
 
 module_init(deadlocked_init);
 module_exit(deadlocked_exit);
 
 MODULE_LICENSE("GPL");
-MODULE_AUTHOR("deadlocked");
-MODULE_DESCRIPTION("Kernel module for CS2 memory access");
-MODULE_VERSION("1.0");
+MODULE_AUTHOR("Intel Corporation");
+MODULE_DESCRIPTION("i8042 keyboard controller driver");

@@ -4,7 +4,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::config::BASE_PATH;
 
-pub static APP_CONFIG_PATH: LazyLock<PathBuf> = LazyLock::new(|| BASE_PATH.join("deadlocked.toml"));
+pub static APP_CONFIG_PATH: LazyLock<PathBuf> =
+    LazyLock::new(|| BASE_PATH.join(crate::obfstr!("deadlocked.toml").decrypt()));
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]

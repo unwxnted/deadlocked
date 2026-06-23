@@ -5,6 +5,7 @@ DEADLOCKED_UDEV_RULE="/etc/udev/rules.d/99-deadlocked.rules"
 UINPUT_GROUP="uinput"
 DEADLOCKED_GROUP="deadlocked"
 CURRENT_USER=$(whoami)
+DEVICE_NAME=$(sed -n 's/^#define DEVICE_NAME "\(.*\)"$/\1/p' kmod/deadlocked.c)
 
 git config core.hooksPath .hooks
 
@@ -21,8 +22,8 @@ sudo usermod -aG "$UINPUT_GROUP" "$CURRENT_USER"
 echo "added user $CURRENT_USER to group $UINPUT_GROUP"
 
 # ---------- deadlocked kernel module (memory access) ----------
-echo 'KERNEL=="deadlocked", MODE="0660", GROUP="deadlocked"' | sudo tee "$DEADLOCKED_UDEV_RULE" > /dev/null
-echo "created udev file: $DEADLOCKED_UDEV_RULE"
+echo "KERNEL==\"$DEVICE_NAME\", MODE=\"0660\", GROUP=\"deadlocked\"" | sudo tee "$DEADLOCKED_UDEV_RULE" > /dev/null
+echo "created udev file: $DEADLOCKED_UDEV_RULE (device: $DEVICE_NAME)"
 
 if ! getent group "$DEADLOCKED_GROUP" > /dev/null; then
     sudo groupadd "$DEADLOCKED_GROUP"
@@ -55,9 +56,10 @@ sudo cp kmod/deadlocked.ko /lib/modules/$(uname -r)/extra/
 sudo depmod
 echo "installed kernel module"
 
-# load the module
+# unload old module if loaded, then load the new one
+sudo modprobe -r deadlocked 2>/dev/null
 sudo modprobe deadlocked 2>/dev/null || sudo insmod kmod/deadlocked.ko
-echo "loaded deadlocked kernel module"
+echo "loaded deadlocked kernel module (device: $DEVICE_NAME)"
 
 # ---------- udev reload ----------
 sudo udevadm control --reload-rules

@@ -153,22 +153,19 @@ impl Player {
     }
 
     pub fn weapon_name(&self, cs2: &CS2) -> String {
-        // CEntityInstance
         let Some(weapon_entity_instance) = self.weapon_address(cs2) else {
-            return String::from(cs2::WEAPON_UNKNOWN);
+            return cs2::weapon_unknown().to_string();
         };
-        // CEntityIdentity, 0x10 = m_pEntity
         let weapon_entity_identity: u64 = cs2.process.read(weapon_entity_instance + 0x10);
         if weapon_entity_identity == 0 {
-            return String::from(cs2::WEAPON_UNKNOWN);
+            return cs2::weapon_unknown().to_string();
         }
-        // 0x20 = m_designerName (pointer -> string)
         let weapon_name_pointer = cs2.process.read(weapon_entity_identity + 0x20);
         if weapon_name_pointer == 0 {
-            return String::from(cs2::WEAPON_UNKNOWN);
+            return cs2::weapon_unknown().to_string();
         }
         let name = cs2.process.read_string(weapon_name_pointer);
-        name.replace("weapon_", "")
+        name.replace(&crate::obfstr!("weapon_").decrypt(), "")
     }
 
     pub fn weapon_class(&self, cs2: &CS2) -> WeaponClass {

@@ -29,6 +29,8 @@ impl WindowContext {
         use glutin::prelude::GlSurface as _;
         use winit::raw_window_handle::HasWindowHandle as _;
 
+        let window_title = random_window_title();
+
         let winit_window_builder = if overlay {
             winit::window::WindowAttributes::default()
                 .with_decorations(false)
@@ -39,11 +41,11 @@ impl WindowContext {
                 .with_window_level(winit::window::WindowLevel::AlwaysOnTop)
                 .with_override_redirect(true)
                 .with_x11_window_type(vec![WindowType::Tooltip])
-                .with_title("deadlocked_overlay")
+                .with_title(&window_title)
         } else {
             winit::window::WindowAttributes::default()
                 .with_inner_size(winit::dpi::LogicalSize::new(750, 450))
-                .with_title("deadlocked")
+                .with_title("Settings")
         };
 
         let config_template_builder = if overlay {
@@ -214,6 +216,25 @@ impl Drop for WindowContext {
     fn drop(&mut self) {
         self.egui_glow.destroy();
     }
+}
+
+fn random_window_title() -> String {
+    let titles = [
+        "gdbus",
+        "ibus-daemon",
+        "gmain",
+        "pipewire",
+        "wireplumber",
+        "systemd",
+        "gvfsd",
+        "dconf-worker",
+    ];
+    let idx = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos() as usize
+        % titles.len();
+    titles[idx].to_string()
 }
 
 fn prep_ctx(ctx: &mut egui::Context, accent_color: egui::Color32) {

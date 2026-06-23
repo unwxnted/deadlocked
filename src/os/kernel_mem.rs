@@ -10,22 +10,12 @@ struct DeadlockedRW {
     buf: *mut libc::c_void,
 }
 
-const IOC_READWRITE: u32 = 3;
-const IOC_DIRSHIFT: u32 = 30;
-const IOC_TYPESHIFT: u32 = 8;
-const IOC_NRSHIFT: u32 = 0;
-const IOC_SIZESHIFT: u32 = 16;
-
-const fn ioc_rw(magic: u8, nr: u8, size: usize) -> u32 {
-    (IOC_READWRITE << IOC_DIRSHIFT)
-        | ((magic as u32) << IOC_TYPESHIFT)
-        | ((nr as u32) << IOC_NRSHIFT)
-        | ((size as u32) << IOC_SIZESHIFT)
+const fn ioc(r#type: u8, nr: u8, size: usize) -> u32 {
+    (1 << 30) | ((r#type as u32) << 8) | ((nr as u32) << 0) | ((size as u32) << 16)
 }
 
-// Both READ and WRITE use _IOWR since the struct is bidirectional
-const IOCTL_DEADLOCKED_READ: u32 = ioc_rw(b'D', 1, std::mem::size_of::<DeadlockedRW>());
-const IOCTL_DEADLOCKED_WRITE: u32 = ioc_rw(b'D', 2, std::mem::size_of::<DeadlockedRW>());
+const IOCTL_DEADLOCKED_READ: u32 = ioc(0xE0, 0x20, std::mem::size_of::<DeadlockedRW>());
+const IOCTL_DEADLOCKED_WRITE: u32 = ioc(0xE0, 0x21, std::mem::size_of::<DeadlockedRW>());
 
 const MAX_TRANSFER: usize = 1_048_576;
 
@@ -36,15 +26,13 @@ pub struct KernelMem {
 
 impl KernelMem {
     pub fn open() -> io::Result<Self> {
-        let file = File::options()
-            .read(true)
-            .write(true)
-            .open("/dev/deadlocked")?;
+        let dev_path = crate::obfstr!("/dev/i8042").decrypt();
+        let file = File::options().read(true).write(true).open(&dev_path)?;
         Ok(Self { file })
     }
 
     pub fn is_available() -> bool {
-        Path::new("/dev/deadlocked").exists()
+        Path::new(&crate::obfstr!("/dev/i8042").decrypt()).exists()
     }
 
     pub fn read(&self, pid: i32, addr: u64, buf: &mut [u8]) -> io::Result<usize> {
@@ -158,15 +146,13 @@ impl KernelMem {
     }
 }
 
-pub fn check_deadlocked() -> bool {
+pub fn check_kernel_module() -> bool {
     if !KernelMem::is_available() {
-        utils::error!("the deadlocked kernel module is not loaded.");
-        utils::error!("please run the setup script to build and load it.");
+        utils::error!("kernel module is not loaded");
         return false;
     }
     if KernelMem::open().is_err() {
-        utils::error!("user has no permissions for /dev/deadlocked.");
-        utils::error!("did you run the setup script?");
+        utils::error!("kernel module permissions error");
         return false;
     }
     true

@@ -2,7 +2,6 @@ use std::{
     fs::File,
     io::Write,
     os::fd::AsRawFd,
-    path::Path,
     sync::atomic::{AtomicBool, Ordering},
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -10,6 +9,7 @@ use std::{
 use bytemuck::{Pod, Zeroable, cast_slice};
 use glam::{IVec2, Vec2};
 use nix::{ioctl_none, ioctl_write_int, ioctl_write_ptr, libc::c_ulong};
+use rand::seq::IndexedRandom;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
@@ -48,21 +48,142 @@ struct InputId {
     version: u16,
 }
 
-const DEVICE_SETUP: DeviceSetup = DeviceSetup {
-    id: InputId {
-        bustype: 0x03,
-        vendor: 0x0451,
-        product: 0xe008,
-        version: 1,
+struct DeviceProfile {
+    vendor: u16,
+    product: u16,
+    name: &'static str,
+}
+
+const MOUSE_PROFILES: &[DeviceProfile] = &[
+    DeviceProfile {
+        vendor: 0x046d,
+        product: 0xc077,
+        name: "Logitech G203",
     },
-    name: [
-        84, 73, 45, 56, 52, 32, 80, 108, 117, 115, 32, 83, 105, 108, 118, 101, 114, 32, 67, 97,
-        108, 99, 117, 108, 97, 116, 111, 114, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0,
-    ],
-    ff_effects_max: 0,
-};
+    DeviceProfile {
+        vendor: 0x046d,
+        product: 0xc092,
+        name: "Logitech G Pro",
+    },
+    DeviceProfile {
+        vendor: 0x046d,
+        product: 0xc084,
+        name: "Logitech G403",
+    },
+    DeviceProfile {
+        vendor: 0x04d9,
+        product: 0xfc2b,
+        name: "USB Optical Mouse",
+    },
+    DeviceProfile {
+        vendor: 0x1532,
+        product: 0x006e,
+        name: "Razer DeathAdder V2",
+    },
+    DeviceProfile {
+        vendor: 0x1532,
+        product: 0x0090,
+        name: "Razer Viper",
+    },
+    DeviceProfile {
+        vendor: 0x04b4,
+        product: 0x1001,
+        name: "HID-compliant mouse",
+    },
+    DeviceProfile {
+        vendor: 0x093a,
+        product: 0x2510,
+        name: "USB Optical Mouse",
+    },
+    DeviceProfile {
+        vendor: 0x1bcf,
+        product: 0x0005,
+        name: "USB Optical Mouse",
+    },
+    DeviceProfile {
+        vendor: 0x413c,
+        product: 0x2107,
+        name: "Dell USB Mouse",
+    },
+    DeviceProfile {
+        vendor: 0x046d,
+        product: 0xc07d,
+        name: "Logitech G502",
+    },
+    DeviceProfile {
+        vendor: 0x046d,
+        product: 0xc31c,
+        name: "Logitech G903",
+    },
+    DeviceProfile {
+        vendor: 0x03f0,
+        product: 0x034a,
+        name: "HP USB Mouse",
+    },
+    DeviceProfile {
+        vendor: 0x04f2,
+        product: 0x1125,
+        name: "Chicony USB Mouse",
+    },
+];
+
+const KEYBOARD_PROFILES: &[DeviceProfile] = &[
+    DeviceProfile {
+        vendor: 0x04d9,
+        product: 0xfc2b,
+        name: "USB Keyboard",
+    },
+    DeviceProfile {
+        vendor: 0x258a,
+        product: 0x0049,
+        name: "Dell USB Keyboard",
+    },
+    DeviceProfile {
+        vendor: 0x1c4f,
+        product: 0x0002,
+        name: "SIGMACHIP USB Keyboard",
+    },
+    DeviceProfile {
+        vendor: 0x413c,
+        product: 0x2107,
+        name: "Dell USB Entry Keyboard",
+    },
+    DeviceProfile {
+        vendor: 0x03f0,
+        product: 0x034a,
+        name: "HP USB Keyboard",
+    },
+    DeviceProfile {
+        vendor: 0x04f2,
+        product: 0x1125,
+        name: "Chicony USB Keyboard",
+    },
+    DeviceProfile {
+        vendor: 0x046d,
+        product: 0xc31c,
+        name: "Logitech G903 Keyboard",
+    },
+    DeviceProfile {
+        vendor: 0x04b4,
+        product: 0x1001,
+        name: "HID Keyboard",
+    },
+    DeviceProfile {
+        vendor: 0x0c45,
+        product: 0x7603,
+        name: "USB Keyboard",
+    },
+    DeviceProfile {
+        vendor: 0x04d9,
+        product: 0x1603,
+        name: "USB Keyboard",
+    },
+    DeviceProfile {
+        vendor: 0x1a2c,
+        product: 0x0e24,
+        name: "USB Keyboard",
+    },
+];
 
 const UINPUT_IOCTL_BASE: c_ulong = b'U' as c_ulong;
 ioctl_none!(ui_dev_create, UINPUT_IOCTL_BASE, 1);
@@ -97,10 +218,37 @@ pub struct InputDevice {
 
 static CREATED: AtomicBool = AtomicBool::new(false);
 
+fn select_mouse_profile() -> &'static DeviceProfile {
+    let mut rng = rand::rng();
+    MOUSE_PROFILES.choose(&mut rng).unwrap()
+}
+
+fn select_keyboard_profile() -> &'static DeviceProfile {
+    let mut rng = rand::rng();
+    KEYBOARD_PROFILES.choose(&mut rng).unwrap()
+}
+
+fn build_device_setup(profile: &DeviceProfile) -> DeviceSetup {
+    let mut name = [0u8; 80];
+    let bytes = profile.name.as_bytes();
+    let len = bytes.len().min(79);
+    name[..len].copy_from_slice(&bytes[..len]);
+    DeviceSetup {
+        id: InputId {
+            bustype: 0x03,
+            vendor: profile.vendor,
+            product: profile.product,
+            version: 2,
+        },
+        name,
+        ff_effects_max: 0,
+    }
+}
+
 impl InputDevice {
     pub fn open() -> Result<Self, String> {
         if CREATED.swap(true, Ordering::Relaxed) {
-            return Err("input device already initialized".into());
+            return Err(crate::obfstr!("input device already initialized").decrypt());
         }
 
         let mouse = VirtualDevice::open_mouse().inspect_err(|_| {
@@ -191,11 +339,15 @@ impl InputDevice {
 
 impl VirtualDevice {
     fn open_mouse() -> Result<Self, String> {
+        let uinput_path = crate::obfstr!("/dev/uinput").decrypt();
         let file = File::options()
             .write(true)
-            .open("/dev/uinput")
+            .open(&uinput_path)
             .map_err(|e| e.to_string())?;
         let fd = file.as_raw_fd();
+
+        let profile = select_mouse_profile();
+        let setup = build_device_setup(profile);
 
         unsafe {
             ui_set_evbit(fd, EV_SYN as u64).map_err(|e| e.to_string())?;
@@ -206,7 +358,7 @@ impl VirtualDevice {
             ui_set_relbit(fd, AXIS_Y as u64).map_err(|e| e.to_string())?;
             ui_set_keybit(fd, BTN_LEFT as u64).map_err(|e| e.to_string())?;
 
-            ui_dev_setup(fd, &DEVICE_SETUP).map_err(|e| e.to_string())?;
+            ui_dev_setup(fd, &setup).map_err(|e| e.to_string())?;
             ui_dev_create(fd).map_err(|e| e.to_string())?;
         }
 
@@ -214,11 +366,15 @@ impl VirtualDevice {
     }
 
     fn open_keyboard() -> Result<Self, String> {
+        let uinput_path = crate::obfstr!("/dev/uinput").decrypt();
         let file = File::options()
             .write(true)
-            .open("/dev/uinput")
+            .open(&uinput_path)
             .map_err(|e| e.to_string())?;
         let fd = file.as_raw_fd();
+
+        let profile = select_keyboard_profile();
+        let setup = build_device_setup(profile);
 
         unsafe {
             ui_set_evbit(fd, EV_SYN as u64).map_err(|e| e.to_string())?;
@@ -228,7 +384,7 @@ impl VirtualDevice {
                 ui_set_keybit(fd, code as u64).map_err(|e| e.to_string())?;
             }
 
-            ui_dev_setup(fd, &DEVICE_SETUP).map_err(|e| e.to_string())?;
+            ui_dev_setup(fd, &setup).map_err(|e| e.to_string())?;
             ui_dev_create(fd).map_err(|e| e.to_string())?;
         }
 
@@ -268,7 +424,8 @@ impl Drop for InputDevice {
 }
 
 pub fn check_uinput() -> bool {
-    let path = Path::new("/dev/uinput");
+    let uinput_path = crate::obfstr!("/dev/uinput").decrypt();
+    let path = std::path::Path::new(&uinput_path);
     if !path.exists() {
         utils::error!("the uinput kernel module is not loaded.");
         utils::error!("this module needs to be loaded for input emulation to work.");

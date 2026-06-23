@@ -127,62 +127,60 @@ impl CS2 {
             let name_ptr: u64 = self.process.read(rtti + 0x8);
             let name = self.process.read_string(name_ptr);
 
-            match name.as_str() {
-                class::PLAYER_CONTROLLER => {
-                    let Some(player) = Player::from_controller(entity, self) else {
-                        continue;
-                    };
+            let name_str = name.as_str();
+            if name_str == class::player_controller() {
+                let Some(player) = Player::from_controller(entity, self) else {
+                    continue;
+                };
 
-                    if !player.is_valid(self) {
-                        self.dead_players.push(player);
-                        continue;
-                    }
-
-                    if player == *local_player {
-                        self.target.local_pawn_index = (handle as u64 & 0x7FFF) - 1;
-                    } else {
-                        self.players.push(player);
-                    }
+                if !player.is_valid(self) {
+                    self.dead_players.push(player);
+                    continue;
                 }
-                class::PLANTED_C4 => {
-                    let planted_c4 = PlantedC4::new(entity);
-                    if planted_c4.is_relevant(self) {
-                        self.planted_c4 = Some(planted_c4)
-                    }
+
+                if player == *local_player {
+                    self.target.local_pawn_index = (handle as u64 & 0x7FFF) - 1;
+                } else {
+                    self.players.push(player);
                 }
-                class::INFERNO => {
-                    self.entities.push(Entity::Inferno(Inferno::new(entity)));
+            } else if name_str == class::planted_c4() {
+                let planted_c4 = PlantedC4::new(entity);
+                if planted_c4.is_relevant(self) {
+                    self.planted_c4 = Some(planted_c4)
                 }
-                class::SMOKE => {
-                    self.entities.push(Entity::Smoke(Smoke::new(entity)));
+            } else if name_str == class::inferno() {
+                self.entities.push(Entity::Inferno(Inferno::new(entity)));
+            } else if name_str == class::smoke() {
+                self.entities.push(Entity::Smoke(Smoke::new(entity)));
+            } else if name_str == class::molotov() {
+                self.entities.push(Entity::Molotov(Molotov::new(entity)));
+            } else if name_str == class::flashbang() {
+                self.entities.push(Entity::Flashbang(entity));
+            } else if name_str == class::he_grenade() {
+                self.entities.push(Entity::HeGrenade(entity));
+            } else if name_str == class::decoy() {
+                self.entities.push(Entity::Decoy(entity));
+            } else {
+                let entity_identity: u64 = self.process.read(entity + 0x10);
+                if entity_identity == 0 {
+                    continue;
                 }
-                class::MOLOTOV => self.entities.push(Entity::Molotov(Molotov::new(entity))),
-                class::FLASHBANG => self.entities.push(Entity::Flashbang(entity)),
-                class::HE_GRENADE => self.entities.push(Entity::HeGrenade(entity)),
-                class::DECOY => self.entities.push(Entity::Decoy(entity)),
-                _ => {
-                    // check if weapon
-                    let entity_identity: u64 = self.process.read(entity + 0x10);
-                    if entity_identity == 0 {
+
+                let name_pointer = self.process.read(entity_identity + 0x20);
+                if name_pointer == 0 {
+                    continue;
+                }
+
+                let name = self.process.read_string(name_pointer);
+
+                if name.starts_with(&crate::obfstr!("weapon_").decrypt()) {
+                    if self.entity_has_owner(entity) {
                         continue;
                     }
 
-                    let name_pointer = self.process.read(entity_identity + 0x20);
-                    if name_pointer == 0 {
-                        continue;
-                    }
+                    let weapon = Weapon::from_entity(entity, self);
 
-                    let name = self.process.read_string(name_pointer);
-
-                    if name.starts_with("weapon_") {
-                        if self.entity_has_owner(entity) {
-                            continue;
-                        }
-
-                        let weapon = Weapon::from_entity(entity, self);
-
-                        self.entities.push(Entity::Weapon { weapon, entity });
-                    }
+                    self.entities.push(Entity::Weapon { weapon, entity });
                 }
             }
 

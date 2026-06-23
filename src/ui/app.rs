@@ -14,9 +14,9 @@ use winit::{
 
 use crate::{
     config::{
-        CONFIG_PATH, Config, DEFAULT_CONFIG_NAME,
+        CONFIG_PATH, Config,
         application::{ApplicationConfig, read_app_config},
-        available_configs, parse_config, write_config,
+        available_configs, default_config_name, parse_config, write_config,
     },
     cs2::entity::weapon::Weapon,
     data::{Data, SoundType},
@@ -63,9 +63,9 @@ pub struct App {
 impl App {
     pub fn new(channel: Channel<GameMessage, UiMessage>, data: Arc<Mutex<Data>>) -> Self {
         // read config
-        let config = parse_config(&CONFIG_PATH.join(DEFAULT_CONFIG_NAME));
+        let config = parse_config(&CONFIG_PATH.join(default_config_name()));
         // override config if invalid
-        write_config(&config, &CONFIG_PATH.join(DEFAULT_CONFIG_NAME));
+        write_config(&config, &CONFIG_PATH.join(default_config_name()));
         let grenades = read_grenades();
 
         let app_config = read_app_config();
@@ -82,7 +82,7 @@ impl App {
 
             app_config,
             config,
-            current_config: CONFIG_PATH.join(DEFAULT_CONFIG_NAME),
+            current_config: CONFIG_PATH.join(default_config_name()),
             available_configs: available_configs(),
             new_config_name: String::new(),
 
