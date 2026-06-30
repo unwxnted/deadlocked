@@ -71,6 +71,7 @@ fn main() {
     let data_game = data.clone();
 
     std::thread::spawn(move || {
+        set_process_name(crate::obfstr!("gdbus").decrypt().as_str());
         game::GameManager::new(channel_game, data_game).run();
     });
 

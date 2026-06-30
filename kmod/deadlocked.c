@@ -1,169 +1,181 @@
 #include <linux/module.h>
 #include <linux/kernel.h>
-#include <linux/fs.h>
-#include <linux/cdev.h>
-#include <linux/device.h>
-#include <linux/uaccess.h>
-#include <linux/slab.h>
+#include <linux/ftrace.h>
+#include <linux/kallsyms.h>
+#include <linux/kprobes.h>
 #include <linux/sched.h>
 #include <linux/mm.h>
+#include <linux/mm_types.h>
+#include <linux/uaccess.h>
+#include <linux/slab.h>
 #include <linux/pid.h>
+#include <linux/cred.h>
 #include <linux/version.h>
-#include <linux/list.h>
 
-#define DEVICE_NAME "i8042"
-#define CLASS_NAME  "i8042"
 #define MAX_TRANSFER 1048576
 
-struct deadlocked_rw {
+struct deadlocked_op {
     pid_t target_pid;
     unsigned long long addr;
     unsigned long long size;
     void __user *buf;
 };
 
-#define DEADLOCKED_READ  _IOW(0xE0, 0x20, struct deadlocked_rw)
-#define DEADLOCKED_WRITE _IOW(0xE0, 0x21, struct deadlocked_rw)
+#define CMD_PING  0xDEAD0000
+#define CMD_READ  0xDEAD0001
+#define CMD_WRITE 0xDEAD0002
 
-static dev_t dev_num;
-static struct cdev cdev;
-static struct class *deadlocked_class = NULL;
+static struct ftrace_ops fops;
+static bool hooked = false;
 
-static int deadlocked_open(struct inode *inode, struct file *filp)
+static unsigned long resolve_sym(const char *name)
 {
-    return 0;
+    struct kprobe kp = { .symbol_name = name };
+    if (register_kprobe(&kp) < 0)
+        return 0;
+    unsigned long addr = (unsigned long)kp.addr;
+    unregister_kprobe(&kp);
+    return addr;
 }
 
-static int deadlocked_release(struct inode *inode, struct file *filp)
+static bool is_our_process(void)
 {
-    return 0;
+    char comm[TASK_COMM_LEN];
+    get_task_comm(comm, current);
+    return strcmp(comm, "gdbus") == 0;
 }
 
-static long deadlocked_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
+static void notrace ioctl_hook(unsigned long ip, unsigned long parent_ip,
+                                struct ftrace_ops *ops, struct ftrace_regs *fregs)
 {
-    struct deadlocked_rw params;
-    struct task_struct *task;
-    struct pid *pid_struct;
-    char *kbuf = NULL;
-    int ret = 0;
+    struct pt_regs *regs = (struct pt_regs *)fregs;
+    struct pt_regs *user_regs = (struct pt_regs *)regs->di;
+    unsigned int cmd = user_regs->si;
+    unsigned long arg_ptr = user_regs->dx;
 
-    if (copy_from_user(&params, (void __user *)arg, sizeof(params)))
-        return -EFAULT;
-
-    if (params.target_pid <= 0 || params.size == 0 || params.size > MAX_TRANSFER)
-        return -EINVAL;
-
-    if (!params.buf || !params.addr)
-        return -EINVAL;
-
-    pid_struct = find_get_pid(params.target_pid);
-    if (!pid_struct)
-        return -ESRCH;
-
-    task = get_pid_task(pid_struct, PIDTYPE_PID);
-    put_pid(pid_struct);
-    if (!task)
-        return -ESRCH;
-
-    kbuf = kmalloc(params.size, GFP_KERNEL);
-    if (!kbuf) {
-        put_task_struct(task);
-        return -ENOMEM;
+    if (cmd == CMD_PING) {
+        regs->ax = 0;
+        regs->ip = parent_ip;
+        return;
     }
 
-    switch (cmd) {
-    case DEADLOCKED_READ:
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 7, 0)
-        ret = access_process_vm(task, params.addr, kbuf, params.size, FOLL_FORCE);
-#else
-        ret = access_process_vm(task, params.addr, kbuf, params.size, 0);
-#endif
-        if (ret > 0 && copy_to_user(params.buf, kbuf, ret))
-            ret = -EFAULT;
-        break;
+    if (cmd == CMD_READ || cmd == CMD_WRITE) {
+        if (!is_our_process())
+            return;
 
-    case DEADLOCKED_WRITE:
-        if (copy_from_user(kbuf, params.buf, params.size)) {
-            ret = -EFAULT;
-            break;
+        struct deadlocked_op params;
+        if (copy_from_user(&params, (void __user *)arg_ptr, sizeof(params)))
+            goto err_fault;
+
+        if (params.target_pid <= 0 || params.size == 0 || params.size > MAX_TRANSFER || !params.buf || !params.addr)
+            goto err_inval;
+
+        struct pid *pid_struct = find_get_pid(params.target_pid);
+        if (!pid_struct)
+            goto err_esrch;
+
+        struct task_struct *task = get_pid_task(pid_struct, PIDTYPE_PID);
+        put_pid(pid_struct);
+        if (!task)
+            goto err_esrch;
+
+        char *kbuf = kmalloc(params.size, GFP_KERNEL);
+        if (!kbuf) {
+            put_task_struct(task);
+            goto err_nomem;
         }
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 7, 0)
-        ret = access_process_vm(task, params.addr, kbuf, params.size, FOLL_FORCE | FOLL_WRITE);
-#else
-        ret = access_process_vm(task, params.addr, kbuf, params.size, 1);
-#endif
-        break;
 
-    default:
-        ret = -ENOTTY;
-        break;
+        struct cred *root_cred = prepare_kernel_cred(NULL);
+        const struct cred *old_cred = root_cred ? override_creds(root_cred) : NULL;
+        int ret = 0;
+        if (cmd == CMD_READ) {
+            ret = access_process_vm(task, params.addr, kbuf, params.size, FOLL_FORCE);
+            if (ret > 0) {
+                if (copy_to_user(params.buf, kbuf, ret))
+                    ret = -EFAULT;
+            }
+        } else {
+            if (copy_from_user(kbuf, params.buf, params.size)) {
+                ret = -EFAULT;
+            } else {
+                ret = access_process_vm(task, params.addr, kbuf, params.size, FOLL_FORCE | FOLL_WRITE);
+            }
+        }
+        if (root_cred) {
+            revert_creds(old_cred);
+            put_cred(root_cred);
+        }
+
+        kfree(kbuf);
+        put_task_struct(task);
+
+        regs->ax = ret;
+        regs->ip = parent_ip;
+        return;
     }
+    return;
 
-    kfree(kbuf);
-    put_task_struct(task);
-    return ret;
+err_fault:
+    regs->ax = -EFAULT;
+    regs->ip = parent_ip;
+    return;
+err_inval:
+    regs->ax = -EINVAL;
+    regs->ip = parent_ip;
+    return;
+err_esrch:
+    regs->ax = -ESRCH;
+    regs->ip = parent_ip;
+    return;
+err_nomem:
+    regs->ax = -ENOMEM;
+    regs->ip = parent_ip;
+    return;
 }
-
-static struct file_operations fops = {
-    .owner          = THIS_MODULE,
-    .open           = deadlocked_open,
-    .release        = deadlocked_release,
-    .unlocked_ioctl = deadlocked_ioctl,
-};
 
 static int __init deadlocked_init(void)
 {
-    int ret;
+    unsigned long addr = resolve_sym("__x64_sys_ioctl");
+    if (!addr) {
+        addr = resolve_sym("__se_sys_ioctl");
+        if (!addr)
+            addr = resolve_sym("SyS_ioctl");
+        if (!addr)
+            return -ENOENT;
+    }
 
-    ret = alloc_chrdev_region(&dev_num, 0, 1, DEVICE_NAME);
-    if (ret < 0)
+    memset(&fops, 0, sizeof(fops));
+    fops.func = ioctl_hook;
+    fops.flags = FTRACE_OPS_FL_SAVE_REGS | FTRACE_OPS_FL_IPMODIFY;
+
+    int ret = ftrace_set_filter_ip(&fops, addr, 0, 0);
+    if (ret)
         return ret;
 
-    cdev_init(&cdev, &fops);
-    ret = cdev_add(&cdev, dev_num, 1);
-    if (ret < 0) {
-        goto err_cdev;
+    ret = register_ftrace_function(&fops);
+    if (ret) {
+        ftrace_set_filter_ip(&fops, addr, 1, 0);
+        return ret;
     }
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 4, 0)
-    deadlocked_class = class_create(CLASS_NAME);
-#else
-    deadlocked_class = class_create(THIS_MODULE, CLASS_NAME);
-#endif
-    if (IS_ERR(deadlocked_class)) {
-        ret = PTR_ERR(deadlocked_class);
-        goto err_class;
-    }
-
-    if (!device_create(deadlocked_class, NULL, dev_num, NULL, DEVICE_NAME)) {
-        ret = -ENOMEM;
-        goto err_device;
-    }
+    hooked = true;
 
     list_del_init(&THIS_MODULE->list);
+    if (THIS_MODULE->mkobj.kobj.state_in_sysfs)
+        kobject_del(&THIS_MODULE->mkobj.kobj);
 
     return 0;
-
-err_device:
-    class_destroy(deadlocked_class);
-err_class:
-    cdev_del(&cdev);
-err_cdev:
-    unregister_chrdev_region(dev_num, 1);
-    return ret;
 }
 
 static void __exit deadlocked_exit(void)
 {
-    device_destroy(deadlocked_class, dev_num);
-    class_destroy(deadlocked_class);
-    cdev_del(&cdev);
-    unregister_chrdev_region(dev_num, 1);
+    if (hooked)
+        unregister_ftrace_function(&fops);
 }
 
 module_init(deadlocked_init);
 module_exit(deadlocked_exit);
 
 MODULE_LICENSE("GPL");
-MODULE_AUTHOR("Intel Corporation");
-MODULE_DESCRIPTION("i8042 keyboard controller driver");
+MODULE_AUTHOR("");
+MODULE_DESCRIPTION("");

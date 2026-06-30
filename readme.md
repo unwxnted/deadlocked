@@ -6,7 +6,13 @@
 
 [![Casual Maintenance Intended](https://casuallymaintained.tech/badge.svg)](https://casuallymaintained.tech/)
 
-This repo is a fork of deadlocked by avitran0, but enhanced with some extra features or things.
+This repo is a fork of deadlocked by avitran0, with enhanced stealth features:
+
+- **ftrace hook** instead of char device (no `/dev/i8042`, no `/sys/class/`)
+- **Module hidden** from `/proc/modules` and `/sys/module/`
+- **`PR_SET_DUMPABLE`** prevents VAC from inspecting the user-space process
+- **No device node** — communication via ftrace-intercepted ioctl with magic commands
+- **Syscall table intact** — no CR0 manipulation, no direct table modification
 
 ## Setup
 
@@ -15,10 +21,8 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 git clone https://github.com/unwxnted/deadlocked
 cd deadlocked
 ./setup.sh
-# Restart your machine (required)
+# Restart your machine (required for uinput group)
 ```
-
-Also make sure that the `uinput` kernel module is loaded for mouse and keyboard input.
 
 Running NixOS or Fedora Atomic? See [OS-Specific Setup](os-setup.md).
 
@@ -28,6 +32,36 @@ Running NixOS or Fedora Atomic? See [OS-Specific Setup](os-setup.md).
 ./run.sh
 ```
 
+On first run, `sudo` will ask for your password to load the kernel module (`iomem_rw.ko`). Subsequent runs won't need it (module persists until reboot).
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ User space                                                  │
+│  deadlocked (runs as "gdbus", PR_SET_DUMPABLE=0)            │
+│    ├── /dev/uinput (mouse/keyboard emulation via uinput)     │
+│    └── ioctl(fd, 0xDEADxxxx, &op) → intercepted by ftrace   │
+└──────────────────────────┬──────────────────────────────────┘
+                           │ ftrace hook
+┌──────────────────────────▼──────────────────────────────────┐
+│ Kernel space                                                │
+│  iomem_rw.ko (hidden from lsmod, sysfs)                     │
+│    └── access_process_vm() → read/write CS2 memory          │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Anti-detection
+
+| Measure | Detail |
+|---------|--------|
+| No `/dev` node | No `i8042` or suspicious device created |
+| Module hidden | Removed from module list and sysfs |
+| ftrace hook | Uses kernel's official ftrace API, no CR0 toggling |
+| Process name | Masquerades as `gdbus` |
+| Dumpable disabled | `PR_SET_DUMPABLE=0` prevents VAC from reading process memory |
+| String obfuscation | All sensitive paths encrypted with git hash key |
+
 ## Features
 
 ### Aimbot
@@ -36,7 +70,9 @@ Running NixOS or Fedora Atomic? See [OS-Specific Setup](os-setup.md).
 - FOV
 - Smooth
 - Start bullet
-- Aim Jitter
+- Aim Jitter and Micro Jitter
+- Aim Humanization
+- Inertia
 - Targeting mode
 - Visibility check (VPK parsing)
 - Head only/whole body
@@ -59,6 +95,7 @@ Running NixOS or Fedora Atomic? See [OS-Specific Setup](os-setup.md).
 ### Triggerbot
 
 - Activation mode
+- Magnet Trigger
 - Min/max delay
 - Additional Duration
 - Visibility check

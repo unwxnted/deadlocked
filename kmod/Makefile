@@ -1,4 +1,5 @@
-obj-m += deadlocked.o
+obj-m := iomem_rw.o
+iomem_rw-objs := deadlocked.o
 
 KDIR ?= /lib/modules/$(shell uname -r)/build
 
@@ -9,9 +10,9 @@ clean:
 	$(MAKE) -C $(KDIR) M=$(CURDIR) clean
 
 install:
-	sudo insmod deadlocked.ko
+	sudo insmod iomem_rw.ko
 
 uninstall:
-	sudo rmmod deadlocked
+	sudo rmmod iomem_rw
 
 .PHONY: all clean install uninstall

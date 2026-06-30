@@ -10,12 +10,9 @@ struct DeadlockedRW {
     buf: *mut libc::c_void,
 }
 
-const fn ioc(r#type: u8, nr: u8, size: usize) -> u32 {
-    (1 << 30) | ((r#type as u32) << 8) | ((nr as u32) << 0) | ((size as u32) << 16)
-}
-
-const IOCTL_DEADLOCKED_READ: u32 = ioc(0xE0, 0x20, std::mem::size_of::<DeadlockedRW>());
-const IOCTL_DEADLOCKED_WRITE: u32 = ioc(0xE0, 0x21, std::mem::size_of::<DeadlockedRW>());
+const CMD_PING: u32 = 0xDEAD0000;
+const CMD_READ: u32 = 0xDEAD0001;
+const CMD_WRITE: u32 = 0xDEAD0002;
 
 const MAX_TRANSFER: usize = 1_048_576;
 
@@ -26,13 +23,28 @@ pub struct KernelMem {
 
 impl KernelMem {
     pub fn open() -> io::Result<Self> {
-        let dev_path = crate::obfstr!("/dev/i8042").decrypt();
-        let file = File::options().read(true).write(true).open(&dev_path)?;
+        let file = File::open(crate::obfstr!("/dev/null").decrypt())?;
         Ok(Self { file })
     }
 
     pub fn is_available() -> bool {
-        Path::new(&crate::obfstr!("/dev/i8042").decrypt()).exists()
+        Path::new(&crate::obfstr!("/dev/null").decrypt()).exists()
+    }
+
+    fn do_ioctl(&self, cmd: u32, op: &mut DeadlockedRW) -> io::Result<usize> {
+        let ret = unsafe {
+            libc::ioctl(
+                self.file.as_raw_fd(),
+                cmd as libc::c_ulong,
+                op as *mut DeadlockedRW,
+            )
+        };
+
+        if ret < 0 {
+            Err(io::Error::last_os_error())
+        } else {
+            Ok(ret as usize)
+        }
     }
 
     pub fn read(&self, pid: i32, addr: u64, buf: &mut [u8]) -> io::Result<usize> {
@@ -56,19 +68,7 @@ impl KernelMem {
             buf: buf.as_mut_ptr() as *mut libc::c_void,
         };
 
-        let ret = unsafe {
-            libc::ioctl(
-                self.file.as_raw_fd(),
-                IOCTL_DEADLOCKED_READ as libc::c_ulong,
-                &mut rw as *mut DeadlockedRW,
-            )
-        };
-
-        if ret < 0 {
-            Err(io::Error::last_os_error())
-        } else {
-            Ok(ret as usize)
-        }
+        self.do_ioctl(CMD_READ, &mut rw)
     }
 
     fn read_chunked(&self, pid: i32, mut addr: u64, buf: &mut [u8]) -> io::Result<usize> {
@@ -111,19 +111,7 @@ impl KernelMem {
             buf: buf.as_ptr() as *mut libc::c_void,
         };
 
-        let ret = unsafe {
-            libc::ioctl(
-                self.file.as_raw_fd(),
-                IOCTL_DEADLOCKED_WRITE as libc::c_ulong,
-                &mut rw as *mut DeadlockedRW,
-            )
-        };
-
-        if ret < 0 {
-            Err(io::Error::last_os_error())
-        } else {
-            Ok(ret as usize)
-        }
+        self.do_ioctl(CMD_WRITE, &mut rw)
     }
 
     fn write_chunked(&self, pid: i32, mut addr: u64, buf: &[u8]) -> io::Result<usize> {
@@ -148,12 +136,37 @@ impl KernelMem {
 
 pub fn check_kernel_module() -> bool {
     if !KernelMem::is_available() {
-        utils::error!("kernel module is not loaded");
+        utils::error!("/dev/null is not available");
         return false;
     }
-    if KernelMem::open().is_err() {
-        utils::error!("kernel module permissions error");
-        return false;
+
+    let file = match File::open(crate::obfstr!("/dev/null").decrypt()) {
+        Ok(f) => f,
+        Err(e) => {
+            utils::error!("failed to open /dev/null: {e}");
+            return false;
+        }
+    };
+
+    let mut rw = DeadlockedRW {
+        target_pid: 0,
+        addr: 0,
+        size: 0,
+        buf: std::ptr::null_mut(),
+    };
+
+    let ret = unsafe {
+        libc::ioctl(
+            file.as_raw_fd(),
+            CMD_PING as libc::c_ulong,
+            &mut rw as *mut DeadlockedRW,
+        )
+    };
+
+    if ret == 0 {
+        true
+    } else {
+        utils::error!("kernel module is not loaded or hook not active");
+        false
     }
-    true
 }

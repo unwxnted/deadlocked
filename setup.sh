@@ -1,11 +1,8 @@
 #!/usr/bin/env bash
 
 UINPUT_UDEV_RULE="/etc/udev/rules.d/99-uinput.rules"
-DEADLOCKED_UDEV_RULE="/etc/udev/rules.d/99-deadlocked.rules"
 UINPUT_GROUP="uinput"
-DEADLOCKED_GROUP="deadlocked"
 CURRENT_USER=$(whoami)
-DEVICE_NAME=$(sed -n 's/^#define DEVICE_NAME "\(.*\)"$/\1/p' kmod/deadlocked.c)
 
 git config core.hooksPath .hooks
 
@@ -21,19 +18,7 @@ fi
 sudo usermod -aG "$UINPUT_GROUP" "$CURRENT_USER"
 echo "added user $CURRENT_USER to group $UINPUT_GROUP"
 
-# ---------- deadlocked kernel module (memory access) ----------
-echo "KERNEL==\"$DEVICE_NAME\", MODE=\"0660\", GROUP=\"deadlocked\"" | sudo tee "$DEADLOCKED_UDEV_RULE" > /dev/null
-echo "created udev file: $DEADLOCKED_UDEV_RULE (device: $DEVICE_NAME)"
-
-if ! getent group "$DEADLOCKED_GROUP" > /dev/null; then
-    sudo groupadd "$DEADLOCKED_GROUP"
-    echo "created group $DEADLOCKED_GROUP"
-fi
-
-sudo usermod -aG "$DEADLOCKED_GROUP" "$CURRENT_USER"
-echo "added user $CURRENT_USER to group $DEADLOCKED_GROUP"
-
-# build kernel module
+# ---------- kernel module (memory access via ftrace) ----------
 if [ ! -d "/lib/modules/$(uname -r)/build" ]; then
     echo "ERROR: kernel headers not found."
     echo "install them with your package manager, e.g.:"
@@ -48,18 +33,16 @@ if [ $? -ne 0 ]; then
     echo "ERROR: failed to build kernel module"
     exit 1
 fi
-echo "built kernel module: kmod/deadlocked.ko"
+echo "built kernel module: kmod/iomem_rw.ko"
 
 # copy to a standard location
 sudo mkdir -p /lib/modules/$(uname -r)/extra
-sudo cp kmod/deadlocked.ko /lib/modules/$(uname -r)/extra/
+sudo cp kmod/iomem_rw.ko /lib/modules/$(uname -r)/extra/
 sudo depmod
 echo "installed kernel module"
 
-# unload old module if loaded, then load the new one
-sudo modprobe -r deadlocked 2>/dev/null
-sudo modprobe deadlocked 2>/dev/null || sudo insmod kmod/deadlocked.ko
-echo "loaded deadlocked kernel module (device: $DEVICE_NAME)"
+# load the module (fails silently if already loaded)
+sudo insmod kmod/iomem_rw.ko 2>/dev/null && echo "loaded kernel module" || echo "kernel module already loaded (or load failed, check with 'sudo dmesg | tail')"
 
 # ---------- udev reload ----------
 sudo udevadm control --reload-rules
@@ -80,3 +63,8 @@ if [ "$XDG_CURRENT_DESKTOP" = "Hyprland" ]; then
         echo "added windowrule to Hyprland"
     fi
 fi
+
+echo ""
+echo "=== Setup complete ==="
+echo "Log out and log back in for the uinput group to take effect."
+echo "Then run: ./run.sh"

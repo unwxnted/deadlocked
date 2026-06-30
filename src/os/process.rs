@@ -40,7 +40,7 @@ impl Process {
         let kmem = KernelMem::open().unwrap_or_else(|e| {
             utils::error!("kernel module not available: {e}");
             utils::error!(
-                "load the deadlocked kernel module and ensure /dev/deadlocked is accessible"
+                "load the kernel module with: sudo insmod kmod/iomem_rw.ko"
             );
             std::process::exit(1);
         });
