@@ -1,0 +1,1 @@
+savedcmd_deadlocked.ko := ld -r -m elf_x86_64 -z noexecstack --no-warn-rwx-segments --build-id=sha1  -T /usr/src/linux-7.0.12-1-obj/x86_64/default/scripts/module.lds -o deadlocked.ko deadlocked.o deadlocked.mod.o .module-common.o
