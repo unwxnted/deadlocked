@@ -1,6 +1,7 @@
 use egui::Color32;
 use serde::{Deserialize, Serialize};
 
+use super::text::OverlayTextConfig;
 use crate::ui::color::Colors;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -19,6 +20,7 @@ pub struct HudConfig {
     pub font_size: f32,
     pub icon_size: f32,
     pub debug: bool,
+    pub overlay_text: OverlayTextConfig,
 }
 
 impl Default for HudConfig {
@@ -37,6 +39,7 @@ impl Default for HudConfig {
             font_size: 16.0,
             icon_size: 20.0,
             debug: false,
+            overlay_text: OverlayTextConfig::default(),
         }
     }
 }

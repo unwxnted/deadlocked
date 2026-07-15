@@ -52,7 +52,7 @@ impl Bones {
         (Self::RightKnee, Self::RightFoot),
     ];
 
-    pub fn u64(self) -> u64 {
-        self as u64
+    pub fn index(self) -> usize {
+        self as usize
     }
 }

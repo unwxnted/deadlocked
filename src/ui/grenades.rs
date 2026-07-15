@@ -4,7 +4,7 @@ use glam::{Vec2, Vec3};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::{config::BASE_PATH, constants::grenade_file_name, cs2::entity::weapon::Weapon};
+use crate::{config::BASE_PATH, constants::GRENADE_FILE_NAME, cs2::entity::weapon::Weapon};
 
 pub type GrenadeList = HashMap<String, Vec<Grenade>>;
 
@@ -38,7 +38,7 @@ pub struct GrenadeModifiers {
 }
 
 pub fn read_grenades() -> GrenadeList {
-    let path = BASE_PATH.join(grenade_file_name());
+    let path = BASE_PATH.join(&*GRENADE_FILE_NAME);
     if !path.exists() {
         return GrenadeList::default();
     }
@@ -50,6 +50,6 @@ pub fn read_grenades() -> GrenadeList {
 
 pub fn write_grenades(grenades: &GrenadeList) {
     let out = serde_json::to_string(grenades).unwrap();
-    let path = BASE_PATH.join(grenade_file_name());
+    let path = BASE_PATH.join(&*GRENADE_FILE_NAME);
     std::fs::write(path, out).unwrap();
 }

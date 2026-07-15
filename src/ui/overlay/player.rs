@@ -204,7 +204,7 @@ impl App {
                 &player.name,
                 pos2(tr.x + ew, tr.y + offset),
                 Align2::LEFT_TOP,
-                Some(text_color),
+                text_color,
                 font_size,
             );
             offset += font_size;
@@ -256,7 +256,7 @@ impl App {
                     format!("{}/{}", player.ammo.0, player.ammo.1),
                     pos2(bl.x + half_width, bl.y + font_size),
                     Align2::CENTER_TOP,
-                    Some(text_color),
+                    text_color,
                     font_size,
                 );
             }

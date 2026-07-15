@@ -40,7 +40,7 @@ pub struct App {
 
     pub game_status: GameStatus,
     pub display_scale: f32,
-    pub trails: HashMap<u64, Trail>,
+    pub trails: HashMap<usize, Trail>,
     pub player_sounds: HashMap<u64, (Instant, SoundType)>,
     pub frame_times: VecDeque<Duration>,
 
@@ -58,16 +58,16 @@ pub struct App {
     pub current_tab: Tab,
     pub aimbot_tab: AimbotTab,
     pub aimbot_weapon: Weapon,
+
+    pub text_popup: Option<String>,
+    pub overlay_egui: Option<egui::Context>,
 }
 
 impl App {
     pub fn new(channel: Channel<GameMessage, UiMessage>, data: Arc<Mutex<Data>>) -> Self {
-        // read config
         let config = parse_config(&CONFIG_PATH.join(default_config_name()));
-        // override config if invalid
         write_config(&config, &CONFIG_PATH.join(default_config_name()));
         let grenades = read_grenades();
-
         let app_config = read_app_config();
 
         let ret = Self {
@@ -99,6 +99,9 @@ impl App {
             current_tab: Tab::Aimbot,
             aimbot_tab: AimbotTab::Global,
             aimbot_weapon: Weapon::Ak47,
+
+            text_popup: None,
+            overlay_egui: None,
         };
         ret.send_config();
         ret
@@ -108,7 +111,11 @@ impl App {
         let gui = WindowContext::new(event_loop, false, self.config.accent_color);
         let overlay = WindowContext::new(event_loop, true, self.config.accent_color);
 
+        self.config.font.set(gui.egui());
+        self.config.font.set(overlay.egui());
+
         self.display_scale = gui.window().scale_factor() as f32;
+        self.overlay_egui = Some(overlay.egui().clone());
         utils::info!("detected display scale: {}", self.display_scale);
 
         self.gui = Some(gui);

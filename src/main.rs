@@ -12,6 +12,7 @@ mod config;
 mod constants;
 mod cs2;
 mod data;
+mod font;
 mod game;
 mod math;
 mod message;

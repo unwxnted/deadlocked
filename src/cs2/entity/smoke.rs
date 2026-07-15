@@ -1,16 +1,16 @@
 use egui::{Color32, Rgba};
 use glam::Vec3;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::cs2::{CS2, entity::player::Player};
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Clone, PartialEq, Serialize)]
 pub struct Smoke {
-    controller: u64,
+    controller: usize,
 }
 
 impl Smoke {
-    pub fn new(controller: u64) -> Self {
+    pub fn new(controller: usize) -> Self {
         Self { controller }
     }
 
@@ -43,9 +43,9 @@ impl Smoke {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct SmokeInfo {
-    pub entity: u64,
+    pub entity: usize,
     pub position: Vec3,
 }
 
@@ -54,7 +54,7 @@ impl SmokeInfo {
         super::GrenadeInfo {
             entity: self.entity,
             position: self.position,
-            name: "Smoke",
+            name: "Smoke".to_owned(),
         }
     }
 }

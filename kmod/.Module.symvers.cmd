@@ -1,1 +1,1 @@
-savedcmd_Module.symvers :=  /usr/src/linux-7.0.12-1-obj/x86_64/default/scripts/mod/modpost -M -m -b  -a      -o Module.symvers -n -T modules.order -i /usr/src/linux-7.0.12-1-obj/x86_64/default/Module.symvers -e 
+savedcmd_Module.symvers :=  /usr/src/linux-7.1.3-1-obj/x86_64/default/scripts/mod/modpost -M -m -b  -a      -o Module.symvers -n -T modules.order -i /usr/src/linux-7.1.3-1-obj/x86_64/default/Module.symvers -e 

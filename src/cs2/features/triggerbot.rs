@@ -77,7 +77,7 @@ impl CS2 {
         }
 
         if config.head_only {
-            let head = player.bone_position(self, Bones::Head.u64());
+            let head = player.bone_position(self, Bones::Head.index());
 
             let target_angle = self.angle_to_target(&local_player, &head, &Vec2::ZERO);
             let view_angles = local_player.view_angles(self);

@@ -30,7 +30,7 @@ impl App {
                     format!("{weapon}"),
                     position,
                     Align2::CENTER_CENTER,
-                    None,
+                    self.config.hud.text_color,
                 );
                 if ammo.0 >= 0 {
                     self.text(
@@ -38,7 +38,7 @@ impl App {
                         format!("{}/{}", ammo.0, ammo.1),
                         egui::pos2(position.x, position.y + self.config.hud.font_size),
                         Align2::CENTER_CENTER,
-                        None,
+                        self.config.hud.text_color,
                     );
                 }
             }
@@ -70,7 +70,7 @@ impl App {
         let Some(position) = world_to_screen(&info.position, data) else {
             return;
         };
-        self.text(painter, info.name, position, Align2::CENTER_CENTER, None);
+        self.text(painter, &info.name, position, Align2::CENTER_CENTER, self.config.hud.text_color);
 
         if !self.config.hud.grenade_trails.enabled {
             return;

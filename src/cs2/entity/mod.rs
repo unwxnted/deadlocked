@@ -1,5 +1,5 @@
 use glam::Vec3;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     constants::cs2::class,
@@ -24,18 +24,18 @@ pub mod smoke;
 pub mod weapon;
 pub mod weapon_class;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum Entity {
-    Weapon { weapon: Weapon, entity: u64 },
+    Weapon { weapon: Weapon, entity: usize },
     Inferno(Inferno),
     Smoke(Smoke),
     Molotov(Molotov),
-    Flashbang(u64),
-    HeGrenade(u64),
-    Decoy(u64),
+    Flashbang(usize),
+    HeGrenade(usize),
+    Decoy(usize),
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub enum EntityInfo {
     Weapon {
         weapon: Weapon,
@@ -50,19 +50,19 @@ pub enum EntityInfo {
     Decoy(GrenadeInfo),
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct GrenadeInfo {
-    pub entity: u64,
+    pub entity: usize,
     pub position: Vec3,
-    pub name: &'static str,
+    pub name: String,
 }
 
 impl GrenadeInfo {
-    pub fn new(entity: u64, name: &'static str, cs2: &CS2) -> Self {
+    pub fn new(entity: usize, name: &str, cs2: &CS2) -> Self {
         Self {
             entity,
             position: Player::entity(entity).position(cs2),
-            name,
+            name: name.to_owned(),
         }
     }
 }
@@ -87,14 +87,14 @@ impl CS2 {
         for bucket_index in 0..64 {
             let bucket_pointer =
                 *bytemuck::from_bytes(&bucket_pointers[bucket_index * 8..(bucket_index + 1) * 8]);
-            self.get_entities_in_bucket(bucket_index as u64, bucket_pointer, &local_player);
+            self.get_entities_in_bucket(bucket_index, bucket_pointer, &local_player);
         }
     }
 
     fn get_entities_in_bucket(
         &mut self,
-        bucket_index: u64,
-        bucket_ptr: u64,
+        bucket_index: usize,
+        bucket_ptr: usize,
         local_player: &Player,
     ) {
         if bucket_ptr == 0 || bucket_ptr >> 48 != 0 {
@@ -108,7 +108,7 @@ impl CS2 {
         for index_in_bucket in 0..IDENTITIES_PER_BUCKET {
             let identity_offset = index_in_bucket * self.offsets.entity_identity.size as usize;
 
-            let entity: u64 = *bytemuck::from_bytes(&bucket[identity_offset..identity_offset + 8]);
+            let entity: usize = *bytemuck::from_bytes(&bucket[identity_offset..identity_offset + 8]);
             if entity == 0 {
                 continue;
             }
@@ -117,80 +117,82 @@ impl CS2 {
             let handle: u32 = *bytemuck::from_bytes(&bucket[handle_start..handle_start + 4]);
             let handle_index = handle & 0x7FFF;
             let entity_index =
-                (bucket_index as usize * IDENTITIES_PER_BUCKET + index_in_bucket) as u32;
+                (bucket_index * IDENTITIES_PER_BUCKET + index_in_bucket) as u32;
             if entity_index != handle_index {
                 continue;
             }
 
-            let vtable: u64 = self.process.read(entity);
-            let rtti: u64 = self.process.read(vtable - 0x8);
-            let name_ptr: u64 = self.process.read(rtti + 0x8);
+            let vtable: usize = self.process.read(entity);
+            let rtti: usize = self.process.read(vtable - 0x8);
+            let name_ptr: usize = self.process.read(rtti + 0x8);
             let name = self.process.read_string(name_ptr);
 
             let name_str = name.as_str();
-            if name_str == class::player_controller() {
-                let Some(player) = Player::from_controller(entity, self) else {
-                    continue;
-                };
+            match name_str {
+                s if s == *class::PLAYER_CONTROLLER => {
+                    let Some(player) = Player::from_controller(entity, self) else {
+                        continue;
+                    };
 
-                if !player.is_valid(self) {
-                    self.dead_players.push(player);
-                    continue;
-                }
-
-                if player == *local_player {
-                    self.target.local_pawn_index = (handle as u64 & 0x7FFF) - 1;
-                } else {
-                    self.players.push(player);
-                }
-            } else if name_str == class::planted_c4() {
-                let planted_c4 = PlantedC4::new(entity);
-                if planted_c4.is_relevant(self) {
-                    self.planted_c4 = Some(planted_c4)
-                }
-            } else if name_str == class::inferno() {
-                self.entities.push(Entity::Inferno(Inferno::new(entity)));
-            } else if name_str == class::smoke() {
-                self.entities.push(Entity::Smoke(Smoke::new(entity)));
-            } else if name_str == class::molotov() {
-                self.entities.push(Entity::Molotov(Molotov::new(entity)));
-            } else if name_str == class::flashbang() {
-                self.entities.push(Entity::Flashbang(entity));
-            } else if name_str == class::he_grenade() {
-                self.entities.push(Entity::HeGrenade(entity));
-            } else if name_str == class::decoy() {
-                self.entities.push(Entity::Decoy(entity));
-            } else {
-                let entity_identity: u64 = self.process.read(entity + 0x10);
-                if entity_identity == 0 {
-                    continue;
-                }
-
-                let name_pointer = self.process.read(entity_identity + 0x20);
-                if name_pointer == 0 {
-                    continue;
-                }
-
-                let name = self.process.read_string(name_pointer);
-
-                if name.starts_with(&crate::obfstr!("weapon_").decrypt()) {
-                    if self.entity_has_owner(entity) {
+                    if !player.is_valid(self) {
+                        self.dead_players.push(player);
                         continue;
                     }
 
-                    let weapon = Weapon::from_entity(entity, self);
+                    if player == *local_player {
+                        self.target.local_pawn_index = (handle as usize & 0x7FFF) - 1;
+                    } else {
+                        self.players.push(player);
+                    }
+                }
+                s if s == *class::PLANTED_C4 => {
+                    let planted_c4 = PlantedC4::new(entity);
+                    if planted_c4.is_relevant(self) {
+                        self.planted_c4 = Some(planted_c4)
+                    }
+                }
+                s if s == *class::INFERNO => {
+                    self.entities.push(Entity::Inferno(Inferno::new(entity)));
+                }
+                s if s == *class::SMOKE => {
+                    self.entities.push(Entity::Smoke(Smoke::new(entity)));
+                }
+                s if s == *class::MOLOTOV => {
+                    self.entities.push(Entity::Molotov(Molotov::new(entity)));
+                }
+                s if s == *class::FLASHBANG => {
+                    self.entities.push(Entity::Flashbang(entity));
+                }
+                s if s == *class::HE_GRENADE => {
+                    self.entities.push(Entity::HeGrenade(entity));
+                }
+                s if s == *class::DECOY => {
+                    self.entities.push(Entity::Decoy(entity));
+                }
+                _ => {
+                    let entity_identity: usize = self.process.read(entity + 0x10);
+                    if entity_identity == 0 {
+                        continue;
+                    }
 
-                    self.entities.push(Entity::Weapon { weapon, entity });
+                    let name_pointer = self.process.read(entity_identity + 0x20);
+                    if name_pointer == 0 {
+                        continue;
+                    }
+
+                    let name = self.process.read_string(name_pointer);
+
+                    if name.starts_with(&crate::obfstr!("weapon_").decrypt()) {
+                        if self.entity_has_owner(entity) {
+                            continue;
+                        }
+
+                        let weapon = Weapon::from_entity(entity, self);
+
+                        self.entities.push(Entity::Weapon { weapon, entity });
+                    }
                 }
             }
-
-            // m_designerName
-            /*let name_pointer: u64 =
-                *bytemuck::from_bytes(&bucket[identity_offset + 0x20..identity_offset + 0x28]);
-            let Some(entity) = self.entity_type(entity, name_pointer) else {
-                continue;
-            };
-            self.entities.push(entity);*/
         }
     }
 }

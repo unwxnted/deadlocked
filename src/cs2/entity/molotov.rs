@@ -1,15 +1,15 @@
 use glam::Vec3;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::cs2::{CS2, entity::player::Player};
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Clone, PartialEq, Serialize)]
 pub struct Molotov {
-    controller: u64,
+    controller: usize,
 }
 
 impl Molotov {
-    pub fn new(controller: u64) -> Self {
+    pub fn new(controller: usize) -> Self {
         Self { controller }
     }
 
@@ -28,9 +28,9 @@ impl Molotov {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct MolotovInfo {
-    pub entity: u64,
+    pub entity: usize,
     pub position: Vec3,
     pub is_incendiary: bool,
 }
@@ -41,9 +41,9 @@ impl MolotovInfo {
             entity: self.entity,
             position: self.position,
             name: if self.is_incendiary {
-                "Incendiary"
+                "Incendiary".to_owned()
             } else {
-                "Molotov"
+                "Molotov".to_owned()
             },
         }
     }

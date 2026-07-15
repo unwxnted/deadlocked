@@ -1,15 +1,15 @@
 use glam::Vec3;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::cs2::{CS2, entity::player::Player};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct Inferno {
-    controller: u64,
+    controller: usize,
 }
 
 impl Inferno {
-    pub fn new(controller: u64) -> Self {
+    pub fn new(controller: usize) -> Self {
         Self { controller }
     }
 
@@ -46,9 +46,9 @@ impl Inferno {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct InfernoInfo {
-    pub entity: u64,
+    pub entity: usize,
     pub position: Vec3,
     pub hull: Vec<Vec3>,
 }
@@ -58,7 +58,7 @@ impl InfernoInfo {
         super::GrenadeInfo {
             entity: self.entity,
             position: self.position,
-            name: "Inferno",
+            name: "Inferno".to_owned(),
         }
     }
 }

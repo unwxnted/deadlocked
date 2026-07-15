@@ -39,7 +39,6 @@ mod offsets;
 mod schema;
 mod target;
 
-#[derive(Debug)]
 pub struct CS2 {
     is_valid: bool,
     process: Process,
@@ -67,7 +66,7 @@ impl CS2 {
     }
 
     pub fn setup(&mut self) {
-        let Some(process) = Process::open(cs2::process_name()) else {
+        let Some(process) = Process::open(&cs2::PROCESS_NAME) else {
             self.is_valid = false;
             return;
         };
@@ -152,7 +151,7 @@ impl CS2 {
         data.autostrafe_active = false;
         data.esp_active = false;
 
-        let sdl_window = self.process.read::<u64>(self.offsets.direct.sdl_window);
+        let sdl_window = self.process.read::<usize>(self.offsets.direct.sdl_window);
         if sdl_window == 0 {
             data.window_position = Vec2::ZERO;
             data.window_size = Vec2::ONE;
@@ -189,7 +188,7 @@ impl CS2 {
                 health: player.health(self),
                 armor: player.armor(self),
                 position: player.position(self),
-                head: player.bone_position(self, Bones::Head.u64()),
+                head: player.bone_position(self, Bones::Head.index()),
                 name: player.name(self),
                 weapon: player.weapon(self),
                 ammo: (player.clip_ammo(self), player.reserve_ammo(self)),
@@ -223,7 +222,7 @@ impl CS2 {
             health: local_player.health(self),
             armor: local_player.armor(self),
             position: local_player.position(self),
-            head: local_player.bone_position(self, Bones::Head.u64()),
+            head: local_player.bone_position(self, Bones::Head.index()),
             name: local_player.name(self),
             weapon: local_player.weapon(self),
             ammo: (
@@ -359,7 +358,7 @@ impl CS2 {
         angles
     }
 
-    fn entity_has_owner(&self, entity: u64) -> bool {
+    fn entity_has_owner(&self, entity: usize) -> bool {
         self.process
             .read::<i32>(entity + self.offsets.controller.owner_entity)
             != -1
@@ -375,12 +374,12 @@ impl CS2 {
     }
 
     fn current_time(&self) -> f32 {
-        let global_vars: u64 = self.process.read(self.offsets.direct.global_vars);
+        let global_vars: usize = self.process.read(self.offsets.direct.global_vars);
         self.process.read(global_vars + 0x30)
     }
 
     fn current_map(&self) -> String {
-        let global_vars: u64 = self.process.read(self.offsets.direct.global_vars);
+        let global_vars: usize = self.process.read(self.offsets.direct.global_vars);
         self.process
             .read_string(self.process.read(global_vars + 0x198))
     }

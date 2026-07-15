@@ -7,14 +7,14 @@ use crate::{constants::cs2, cs2::bones::Bones, data::SoundType};
 
 use super::{CS2, weapon_class::WeaponClass};
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
 pub struct Player {
-    controller: u64,
-    pub(crate) pawn: u64,
+    controller: usize,
+    pub(crate) pawn: usize,
 }
 
 impl Player {
-    pub fn entity(entity: u64) -> Self {
+    pub fn entity(entity: usize) -> Self {
         Self {
             controller: 0,
             pawn: entity,
@@ -22,7 +22,7 @@ impl Player {
     }
 
     #[allow(unused)]
-    pub fn index(cs2: &CS2, index: u64) -> Option<Self> {
+    pub fn index(cs2: &CS2, index: usize) -> Option<Self> {
         let controller = Self::get_client_entity(cs2, index)?;
         let pawn_handle: i32 = cs2.process.read(controller + cs2.offsets.controller.pawn);
         if pawn_handle == -1 {
@@ -43,7 +43,7 @@ impl Player {
         Self::get_entity(cs2, pawn_handle).map(|pawn| Self { controller, pawn })
     }
 
-    pub fn from_controller(controller: u64, cs2: &CS2) -> Option<Self> {
+    pub fn from_controller(controller: usize, cs2: &CS2) -> Option<Self> {
         let pawn_handle: i32 = cs2.process.read(controller + cs2.offsets.controller.pawn);
         if pawn_handle == -1 {
             return None;
@@ -51,17 +51,17 @@ impl Player {
         Self::get_entity(cs2, pawn_handle).map(|pawn| Self { controller, pawn })
     }
 
-    pub fn pawn(pawn: u64) -> Self {
+    pub fn pawn(pawn: usize) -> Self {
         Self {
             controller: 0,
             pawn,
         }
     }
 
-    pub fn get_client_entity(cs2: &CS2, index: u64) -> Option<u64> {
+    pub fn get_client_entity(cs2: &CS2, index: usize) -> Option<usize> {
         let bucket_index = index >> 9;
         let index_in_bucket = index & 0x1FF;
-        let bucket_ptr: u64 = cs2
+        let bucket_ptr: usize = cs2
             .process
             .read(cs2.offsets.interface.entity + 0x08 * bucket_index);
         if bucket_ptr == 0 {
@@ -69,18 +69,18 @@ impl Player {
         }
         let entity = cs2
             .process
-            .read(bucket_ptr + cs2.offsets.entity_identity.size as u64 * index_in_bucket);
+            .read(bucket_ptr + cs2.offsets.entity_identity.size as usize * index_in_bucket);
         if entity == 0 {
             return None;
         }
         Some(entity)
     }
 
-    fn get_entity(cs2: &CS2, handle: i32) -> Option<u64> {
-        let index = handle as u64 & 0x7FFF;
+    fn get_entity(cs2: &CS2, handle: i32) -> Option<usize> {
+        let index = handle as usize & 0x7FFF;
         let bucket_index = index >> 9;
         let index_in_bucket = index & 0x1FF;
-        let bucket_ptr: u64 = cs2
+        let bucket_ptr: usize = cs2
             .process
             .read(cs2.offsets.interface.entity + 8 * bucket_index);
         if bucket_ptr == 0 {
@@ -89,7 +89,7 @@ impl Player {
 
         let entity = cs2
             .process
-            .read(bucket_ptr + cs2.offsets.entity_identity.size as u64 * index_in_bucket);
+            .read(bucket_ptr + cs2.offsets.entity_identity.size as usize * index_in_bucket);
         if entity == 0 {
             return None;
         }
@@ -128,7 +128,7 @@ impl Player {
 
     /// returns a pawn-only player
     pub fn spectator_target(&self, cs2: &CS2) -> Option<Self> {
-        let observer_services: u64 = cs2
+        let observer_services: usize = cs2
             .process
             .read(self.pawn + cs2.offsets.pawn.observer_services);
         if observer_services == 0 {
@@ -154,15 +154,15 @@ impl Player {
 
     pub fn weapon_name(&self, cs2: &CS2) -> String {
         let Some(weapon_entity_instance) = self.weapon_address(cs2) else {
-            return cs2::weapon_unknown().to_string();
+            return cs2::WEAPON_UNKNOWN.to_string();
         };
-        let weapon_entity_identity: u64 = cs2.process.read(weapon_entity_instance + 0x10);
+        let weapon_entity_identity: usize = cs2.process.read(weapon_entity_instance + 0x10);
         if weapon_entity_identity == 0 {
-            return cs2::weapon_unknown().to_string();
+            return cs2::WEAPON_UNKNOWN.to_string();
         }
         let weapon_name_pointer = cs2.process.read(weapon_entity_identity + 0x20);
         if weapon_name_pointer == 0 {
-            return cs2::weapon_unknown().to_string();
+            return cs2::WEAPON_UNKNOWN.to_string();
         }
         let name = cs2.process.read_string(weapon_name_pointer);
         name.replace(&crate::obfstr!("weapon_").decrypt(), "")
@@ -173,7 +173,7 @@ impl Player {
     }
 
     fn weapon_handle(&self, cs2: &CS2) -> Option<i32> {
-        let weapon_services: u64 = cs2
+        let weapon_services: usize = cs2
             .process
             .read(self.pawn + cs2.offsets.pawn.weapon_services);
         if weapon_services == 0 {
@@ -186,13 +186,13 @@ impl Player {
         )
     }
 
-    fn weapon_address(&self, cs2: &CS2) -> Option<u64> {
+    fn weapon_address(&self, cs2: &CS2) -> Option<usize> {
         let handle = self.weapon_handle(cs2)?;
         if handle == 0 {
             return None;
         }
 
-        let index = handle as u64 & 0xFFF;
+        let index = handle as usize & 0xFFF;
         Player::get_client_entity(cs2, index)
     }
 
@@ -206,7 +206,7 @@ impl Player {
 
     pub fn all_weapons(&self, cs2: &CS2) -> Vec<Weapon> {
         let mut weapons = vec![];
-        let weapon_services: u64 = cs2
+        let weapon_services: usize = cs2
             .process
             .read(self.pawn + cs2.offsets.pawn.weapon_services);
         if weapon_services == 0 {
@@ -216,11 +216,14 @@ impl Player {
         let length: i32 = cs2
             .process
             .read(weapon_services + cs2.offsets.weapon_services.weapons);
-        let weapon_list: u64 = cs2
+        if length > 10 {
+            return weapons;
+        }
+        let weapon_list: usize = cs2
             .process
             .read(weapon_services + cs2.offsets.weapon_services.weapons + 0x08);
 
-        for i in 0..length as u64 {
+        for i in 0..length as usize {
             let weapon_handle = cs2.process.read(weapon_list + 0x04 * i);
 
             let Some(weapon) = Weapon::from_handle(weapon_handle, cs2) else {
@@ -249,7 +252,7 @@ impl Player {
         cs2.process.read(weapon + cs2.offsets.weapon.reserve_ammo)
     }
 
-    fn game_scene_node(&self, cs2: &CS2) -> u64 {
+    fn game_scene_node(&self, cs2: &CS2) -> usize {
         cs2.process
             .read(self.pawn + cs2.offsets.pawn.game_scene_node)
     }
@@ -274,9 +277,9 @@ impl Player {
         position + eye_offset
     }
 
-    pub fn bone_position(&self, cs2: &CS2, bone_index: u64) -> Vec3 {
+    pub fn bone_position(&self, cs2: &CS2, bone_index: usize) -> Vec3 {
         let gs_node = self.game_scene_node(cs2);
-        let bone_data: u64 = cs2.process.read(
+        let bone_data: usize = cs2.process.read(
             gs_node
                 + cs2.offsets.game_scene_node.model_state
                 + cs2.offsets.model_state.skeleton_instance,
@@ -294,7 +297,7 @@ impl Player {
 
         let mut bones = HashMap::with_capacity(20);
         let gs_node = self.game_scene_node(cs2);
-        let bone_data: u64 = cs2.process.read(
+        let bone_data: usize = cs2.process.read(
             gs_node
                 + cs2.offsets.game_scene_node.model_state
                 + cs2.offsets.model_state.skeleton_instance,
@@ -307,7 +310,7 @@ impl Player {
         let bones_data: [u8; 32 * 32] = cs2.process.read_or_zeroed(bone_data);
 
         for bone in Bones::iter() {
-            let start = bone.u64() as usize * 32;
+            let start = bone.index() * 32;
             let pos = bytemuck::from_bytes(&bones_data[start..start + 3 * 4]);
             bones.insert(bone, *pos);
         }
@@ -376,24 +379,24 @@ impl Player {
     }
 
     pub fn aim_punch(&self, cs2: &CS2) -> Vec2 {
-        let aim_punch_services: u64 = cs2
+        let aim_punch_services: usize = cs2
             .process
             .read(self.pawn + cs2.offsets.pawn.aim_punch_services);
         if aim_punch_services == 0 {
             return Vec2::ZERO;
         }
 
-        let length: u64 = cs2
+        let length: usize = cs2
             .process
             .read(aim_punch_services + cs2.offsets.aim_punch_services.aim_punch_cache);
         if length < 1 {
             return Vec2::ZERO;
         }
 
-        let data_address: u64 = cs2
+        let data_address: usize = cs2
             .process
             .read(aim_punch_services + cs2.offsets.aim_punch_services.aim_punch_cache + 0x08);
-        if data_address > u64::MAX - 50000 {
+        if data_address > usize::MAX - 50000 {
             return Vec2::ZERO;
         }
 
@@ -401,7 +404,7 @@ impl Player {
     }
 
     pub fn has_defuser(&self, cs2: &CS2) -> bool {
-        let item_services: u64 = cs2.process.read(self.pawn + cs2.offsets.pawn.item_services);
+        let item_services: usize = cs2.process.read(self.pawn + cs2.offsets.pawn.item_services);
         if item_services == 0 {
             return false;
         }
@@ -412,7 +415,7 @@ impl Player {
     }
 
     pub fn has_helmet(&self, cs2: &CS2) -> bool {
-        let item_services: u64 = cs2.process.read(self.pawn + cs2.offsets.pawn.item_services);
+        let item_services: usize = cs2.process.read(self.pawn + cs2.offsets.pawn.item_services);
         if item_services == 0 {
             return false;
         }
@@ -427,7 +430,7 @@ impl Player {
         weapons.contains(&Weapon::C4)
     }
 
-    fn action_tracking_services(&self, cs2: &CS2) -> u64 {
+    fn action_tracking_services(&self, cs2: &CS2) -> usize {
         cs2.process
             .read(self.controller + cs2.offsets.controller.action_tracking_services)
     }
@@ -470,7 +473,7 @@ impl Player {
             ];
             if !CHECKED_BONES
                 .iter()
-                .any(|bone| bvh.has_line_of_sight(eye_pos, self.bone_position(cs2, bone.u64())))
+                .any(|bone| bvh.has_line_of_sight(eye_pos, self.bone_position(cs2, bone.index())))
             {
                 return false;
             }
@@ -491,7 +494,7 @@ impl Player {
             return None;
         }
 
-        let entity = Player::get_client_entity(cs2, index as u64)?;
+        let entity = Player::get_client_entity(cs2, index as usize)?;
         let player = Player {
             controller: 0,
             pawn: entity,
@@ -554,7 +557,7 @@ impl Player {
     pub fn set_fov(&self, cs2: &CS2, value: u32) {
         let camera_service = cs2
             .process
-            .read::<u64>(self.pawn + cs2.offsets.pawn.camera_services);
+            .read::<usize>(self.pawn + cs2.offsets.pawn.camera_services);
         if camera_service == 0 {
             return;
         }

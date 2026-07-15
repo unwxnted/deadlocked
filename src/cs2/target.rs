@@ -12,13 +12,13 @@ use crate::{
     math::angles_to_fov,
 };
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct Target {
     pub player: Option<Player>,
     pub angle: Vec2,
     pub distance: f32,
-    pub bone_index: u64,
-    pub local_pawn_index: u64,
+    pub bone_index: usize,
+    pub local_pawn_index: usize,
     pub previous_aim_punch: Vec2,
 }
 
@@ -83,7 +83,7 @@ impl CS2 {
                 continue;
             }
 
-            let head_position = player.bone_position(self, Bones::Head.u64());
+            let head_position = player.bone_position(self, Bones::Head.index());
             let distance = eye_position.distance(head_position);
             let angle = self.angle_to_target(&local_player, &head_position, &aim_punch);
             let fov = angles_to_fov(&view_angles, &angle);
@@ -105,7 +105,7 @@ impl CS2 {
                 self.target.player = Some(*player);
                 self.target.angle = angle;
                 self.target.distance = distance;
-                self.target.bone_index = Bones::Head.u64();
+                self.target.bone_index = Bones::Head as usize;
             }
         }
 
@@ -116,7 +116,7 @@ impl CS2 {
         // update target angle
         let mut smallest_fov = 360.0;
         for bone in Bones::iter() {
-            let bone_position = target.bone_position(self, bone.u64());
+            let bone_position = target.bone_position(self, bone.index());
             let distance = eye_position.distance(bone_position);
             let angle = self.angle_to_target(&local_player, &bone_position, &aim_punch);
             let fov = angles_to_fov(&view_angles, &angle);
@@ -126,17 +126,17 @@ impl CS2 {
 
                 self.target.angle = angle;
                 self.target.distance = distance;
-                self.target.bone_index = bone.u64();
+                self.target.bone_index = bone as usize;
             }
         }
         /*
-        let head_position = self.get_bone_position(process, self.target.pawn, Bones::Head.u64());
+        let head_position = self.get_bone_position(process, self.target.pawn, Bones::Head.index());
         let distance = eye_position.distance(head_position);
         let angle = self.get_target_angle(process, local_pawn, head_position, aim_punch);
 
         self.target.angle = angle;
         self.target.distance = distance;
-        self.target.bone_index = Bones::Head.u64();
+        self.target.bone_index = Bones::Head.index();
         */
     }
 }

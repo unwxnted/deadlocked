@@ -11,14 +11,13 @@ use bytemuck::Pod;
 use super::kernel_mem::KernelMem;
 use crate::constants::{cs2, elf};
 
-#[derive(Debug)]
 pub struct Process {
     pub pid: i32,
     kmem: KernelMem,
     path: PathBuf,
-    pub min: u64,
-    pub max: u64,
-    string_cache: RefCell<HashMap<u64, String>>,
+    pub min: usize,
+    pub max: usize,
+    string_cache: RefCell<HashMap<usize, String>>,
 }
 
 impl Process {
@@ -31,8 +30,8 @@ impl Process {
                     std::process::exit(1);
                 }),
                 path: PathBuf::from(format!("/proc/{pid}")),
-                min: u64::MAX,
-                max: u64::MIN,
+                min: usize::MAX,
+                max: usize::MIN,
                 string_cache: RefCell::new(HashMap::new()),
             };
         }
@@ -49,16 +48,16 @@ impl Process {
             pid,
             kmem,
             path: PathBuf::from(format!("/proc/{pid}")),
-            min: u64::MAX,
-            max: u64::MIN,
+            min: usize::MAX,
+            max: usize::MIN,
             string_cache: RefCell::new(HashMap::new()),
         };
 
-        let libs: Vec<u64> = cs2::libs()
+        let libs: Vec<usize> = cs2::LIBS
             .iter()
-            .filter_map(|&lib| ret.module_base_address(lib))
+            .filter_map(|lib| ret.module_base_address(lib.as_str()))
             .collect();
-        let sizes: Vec<u64> = libs.iter().map(|lib| ret.module_size(*lib)).collect();
+        let sizes: Vec<usize> = libs.iter().map(|lib| ret.module_size(*lib)).collect();
 
         for (lib, size) in libs.into_iter().zip(sizes) {
             let min = lib - 1_000_000;
@@ -78,29 +77,29 @@ impl Process {
         self.path.exists() && self.pid > 0
     }
 
-    pub fn read<T: Pod + Default>(&self, address: u64) -> T {
+    pub fn read<T: Pod + Default>(&self, address: usize) -> T {
         let mut t = T::default();
         let buffer = bytemuck::bytes_of_mut(&mut t);
-        let _ = self.kmem.read(self.pid, address, buffer);
+        let _ = self.kmem.read(self.pid, address as u64, buffer);
         t
     }
 
-    pub fn read_or_zeroed<T: Pod>(&self, address: u64) -> T {
+    pub fn read_or_zeroed<T: Pod>(&self, address: usize) -> T {
         let mut t = T::zeroed();
         let buffer = bytemuck::bytes_of_mut(&mut t);
-        let _ = self.kmem.read(self.pid, address, buffer);
+        let _ = self.kmem.read(self.pid, address as u64, buffer);
         t
     }
 
-    pub fn read_vec(&self, address: u64, length: usize) -> Vec<u8> {
+    pub fn read_vec(&self, address: usize, length: usize) -> Vec<u8> {
         let mut buffer = vec![0u8; length];
-        let _ = self.kmem.read(self.pid, address, &mut buffer);
+        let _ = self.kmem.read(self.pid, address as u64, &mut buffer);
         buffer
     }
 
     pub fn read_typed_vec<T: Pod + Default>(
         &self,
-        address: u64,
+        address: usize,
         stride: usize,
         count: usize,
     ) -> Vec<T> {
@@ -108,7 +107,7 @@ impl Process {
         assert!(stride >= size);
 
         let mut buffer = vec![0u8; stride * count];
-        let _ = self.kmem.read(self.pid, address, &mut buffer);
+        let _ = self.kmem.read(self.pid, address as u64, &mut buffer);
 
         let mut result = vec![T::default(); count];
         let result_ptr = result.as_mut_ptr() as *mut u8;
@@ -124,12 +123,12 @@ impl Process {
         result
     }
 
-    pub fn write<T: Pod>(&self, address: u64, value: T) {
+    pub fn write<T: Pod>(&self, address: usize, value: T) {
         let buffer = bytemuck::bytes_of(&value);
-        let _ = self.kmem.write(self.pid, address, buffer);
+        let _ = self.kmem.write(self.pid, address as u64, buffer);
     }
 
-    pub fn read_string(&self, address: u64) -> String {
+    pub fn read_string(&self, address: usize) -> String {
         if let Some(cached) = self.string_cache.borrow().get(&address).cloned() {
             return cached;
         }
@@ -140,7 +139,7 @@ impl Process {
         string
     }
 
-    pub fn read_string_uncached(&self, address: u64) -> String {
+    pub fn read_string_uncached(&self, address: usize) -> String {
         let mut bytes = Vec::with_capacity(8);
         let mut i = address;
         loop {
@@ -155,13 +154,13 @@ impl Process {
         String::from_utf8(bytes).unwrap_or_default()
     }
 
-    pub fn read_bytes(&self, address: u64, count: u64) -> Vec<u8> {
-        let mut buffer = vec![0u8; count as usize];
-        let _ = self.kmem.read(self.pid, address, &mut buffer);
+    pub fn read_bytes(&self, address: usize, count: usize) -> Vec<u8> {
+        let mut buffer = vec![0u8; count];
+        let _ = self.kmem.read(self.pid, address as u64, &mut buffer);
         buffer
     }
 
-    pub fn module_base_address(&self, module_name: &str) -> Option<u64> {
+    pub fn module_base_address(&self, module_name: &str) -> Option<usize> {
         let Ok(maps) = File::open(self.path.join(crate::obfstr!("maps").decrypt())) else {
             return None;
         };
@@ -179,18 +178,18 @@ impl Process {
                 continue;
             };
             utils::debug!("found module {module_name} at {address:X}");
-            return Some(address);
+            return Some(address as usize);
         }
         utils::warn!("module {module_name} not found");
         None
     }
 
-    pub fn dump_module(&self, address: u64) -> Vec<u8> {
+    pub fn dump_module(&self, address: usize) -> Vec<u8> {
         let module_size = self.module_size(address);
         self.read_bytes(address, module_size)
     }
 
-    pub fn scan(&self, pattern: &str, base_address: u64) -> Option<u64> {
+    pub fn scan(&self, pattern: &str, base_address: usize) -> Option<usize> {
         let mut bytes = Vec::with_capacity(8);
         let mut mask = Vec::with_capacity(8);
 
@@ -236,30 +235,30 @@ impl Process {
 
     pub fn get_relative_address(
         &self,
-        instruction: u64,
-        offset: u64,
-        instruction_size: u64,
-    ) -> u64 {
+        instruction: usize,
+        offset: usize,
+        instruction_size: usize,
+    ) -> usize {
         let rip_address = self.read::<i32>(instruction + offset);
         instruction
             .wrapping_add(instruction_size)
-            .wrapping_add(rip_address as u64)
+            .wrapping_add(rip_address as usize)
     }
 
-    pub fn get_interface_offset(&self, base_address: u64, interface_name: &str) -> Option<u64> {
+    pub fn get_interface_offset(&self, base_address: usize, interface_name: &str) -> Option<usize> {
         let create_interface =
             self.get_module_export(base_address, &crate::obfstr!("CreateInterface").decrypt())?;
         let export_address = create_interface + 0x10;
 
         let mut interface_entry =
-            self.read(export_address + 0x07 + self.read::<u32>(export_address + 0x03) as u64);
+            self.read(export_address + 0x07 + self.read::<u32>(export_address + 0x03) as usize);
 
         loop {
             let entry_name_address = self.read(interface_entry + 8);
             let entry_name = self.read_string_uncached(entry_name_address);
             if entry_name.starts_with(interface_name) {
-                let vfunc_address = self.read::<u64>(interface_entry);
-                return Some(self.read::<u32>(vfunc_address + 0x03) as u64 + vfunc_address + 0x07);
+                let vfunc_address = self.read::<u64>(interface_entry) as usize;
+                return Some(self.read::<u32>(vfunc_address + 0x03) as usize + vfunc_address + 0x07);
             }
             interface_entry = self.read(interface_entry + 0x10);
             if interface_entry == 0 {
@@ -269,7 +268,7 @@ impl Process {
         None
     }
 
-    pub fn get_module_export(&self, base_address: u64, export_name: &str) -> Option<u64> {
+    pub fn get_module_export(&self, base_address: usize, export_name: &str) -> Option<usize> {
         let add = 0x18;
 
         let string_table = self.get_address_from_dynamic_section(base_address, 0x05)?;
@@ -279,9 +278,9 @@ impl Process {
 
         while self.read::<u32>(symbol_table) != 0 {
             let st_name = self.read::<u32>(symbol_table);
-            let name = self.read_string_uncached(string_table + st_name as u64);
+            let name = self.read_string_uncached(string_table + st_name as usize);
             if name == export_name {
-                return Some(self.read::<u64>(symbol_table + 0x08) + base_address);
+                return Some(self.read::<u64>(symbol_table + 0x08) as usize + base_address);
             }
             symbol_table += add;
         }
@@ -289,13 +288,13 @@ impl Process {
         None
     }
 
-    pub fn get_address_from_dynamic_section(&self, base_address: u64, tag: u64) -> Option<u64> {
+    pub fn get_address_from_dynamic_section(&self, base_address: usize, tag: usize) -> Option<usize> {
         let dynamic_section_offset =
             self.get_segment_from_pht(base_address, elf::DYNAMIC_SECTION_PHT_TYPE)?;
 
         let register_size = 8;
         let mut address =
-            self.read::<u64>(dynamic_section_offset + 2 * register_size) + base_address;
+            self.read::<u64>(dynamic_section_offset + 2 * register_size) as usize + base_address;
 
         loop {
             let tag_address = address;
@@ -304,7 +303,7 @@ impl Process {
             if tag_value == 0 {
                 break;
             }
-            if tag_value == tag {
+            if tag_value == tag as u64 {
                 return Some(self.read(tag_address + register_size));
             }
 
@@ -314,14 +313,14 @@ impl Process {
         None
     }
 
-    pub fn get_segment_from_pht(&self, base_address: u64, tag: u64) -> Option<u64> {
+    pub fn get_segment_from_pht(&self, base_address: usize, tag: usize) -> Option<usize> {
         let first_entry =
-            self.read::<u64>(base_address + elf::PROGRAM_HEADER_OFFSET) + base_address;
-        let entry_size = self.read::<u16>(base_address + elf::PROGRAM_HEADER_ENTRY_SIZE) as u64;
+            self.read::<u64>(base_address + elf::PROGRAM_HEADER_OFFSET) as usize + base_address;
+        let entry_size = self.read::<u16>(base_address + elf::PROGRAM_HEADER_ENTRY_SIZE) as usize;
 
-        for i in 0..self.read::<u16>(base_address + elf::PROGRAM_HEADER_NUM_ENTRIES) {
-            let entry = first_entry + i as u64 * entry_size;
-            if self.read::<u32>(entry) as u64 == tag {
+        for i in 0..self.read::<u16>(base_address + elf::PROGRAM_HEADER_NUM_ENTRIES) as usize {
+            let entry = first_entry + i * entry_size;
+            if self.read::<u32>(entry) as usize == tag {
                 return Some(entry);
             }
         }
@@ -329,13 +328,13 @@ impl Process {
         None
     }
 
-    pub fn get_convar(&self, convar_interface: u64, convar_name: &str) -> Option<u64> {
+    pub fn get_convar(&self, convar_interface: usize, convar_name: &str) -> Option<usize> {
         if convar_interface == 0 {
             return None;
         }
 
-        let objects = self.read::<u64>(convar_interface + 0x50);
-        for i in 0..self.read::<u32>(convar_interface + 160) as u64 {
+        let objects: usize = self.read(convar_interface + 0x50);
+        for i in 0..self.read::<u32>(convar_interface + 160) as usize {
             let object = self.read(objects + i * 16);
             if object == 0 {
                 break;
@@ -351,18 +350,18 @@ impl Process {
         None
     }
 
-    pub fn module_size(&self, address: u64) -> u64 {
-        let section_header_offset = self.read::<u64>(address + elf::SECTION_HEADER_OFFSET);
+    pub fn module_size(&self, address: usize) -> usize {
+        let section_header_offset = self.read::<u64>(address + elf::SECTION_HEADER_OFFSET) as usize;
         let section_header_entry_size =
-            self.read::<u16>(address + elf::SECTION_HEADER_ENTRY_SIZE) as u64;
+            self.read::<u16>(address + elf::SECTION_HEADER_ENTRY_SIZE) as usize;
         let section_header_num_entries =
-            self.read::<u16>(address + elf::SECTION_HEADER_NUM_ENTRIES) as u64;
+            self.read::<u16>(address + elf::SECTION_HEADER_NUM_ENTRIES) as usize;
 
         section_header_offset + section_header_entry_size * section_header_num_entries
     }
 
-    pub fn get_interface_function(&self, interface_address: u64, index: u64) -> u64 {
-        self.read(self.read::<u64>(interface_address) + (index * 8))
+    pub fn get_interface_function(&self, interface_address: usize, index: usize) -> usize {
+        self.read(self.read::<u64>(interface_address) as usize + (index * 8))
     }
 
     fn get_pid(process_name: &str) -> Option<i32> {
@@ -407,7 +406,7 @@ impl Process {
     }
 }
 
-fn scan_normal(bytes: &[u8], mask: &[u8], module: &[u8]) -> Option<u64> {
+fn scan_normal(bytes: &[u8], mask: &[u8], module: &[u8]) -> Option<usize> {
     let pattern_length = bytes.len();
     let stop_index = module.len() - pattern_length;
     'outer: for i in 0..stop_index {
@@ -416,12 +415,12 @@ fn scan_normal(bytes: &[u8], mask: &[u8], module: &[u8]) -> Option<u64> {
                 continue 'outer;
             }
         }
-        return Some(i as u64);
+        return Some(i);
     }
     None
 }
 
-fn scan_simd(bytes: &[u8], mask: &[u8], module: &[u8]) -> Option<u64> {
+fn scan_simd(bytes: &[u8], mask: &[u8], module: &[u8]) -> Option<usize> {
     use std::arch::x86_64::{
         __m256i, _mm256_and_si256, _mm256_loadu_si256, _mm256_testz_si256, _mm256_xor_si256,
     };
@@ -450,7 +449,7 @@ fn scan_simd(bytes: &[u8], mask: &[u8], module: &[u8]) -> Option<u64> {
         let masked = unsafe { _mm256_and_si256(pattern_xor, mask) };
 
         if unsafe { _mm256_testz_si256(masked, masked) } == 1 {
-            return Some(i as u64);
+            return Some(i);
         }
     }
 

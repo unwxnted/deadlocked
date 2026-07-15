@@ -123,7 +123,7 @@ impl CS2 {
         let mut smallest_angle = None;
 
         for bone in &config.bones {
-            let bone_pos = target.bone_position(self, bone.u64());
+            let bone_pos = target.bone_position(self, bone.index());
             let angle =
                 self.angle_to_target(local_player, &bone_pos, &self.target.previous_aim_punch);
             let fov = angles_to_fov(&view_angles, &angle);
